@@ -14,7 +14,7 @@ void PrintElapsed()
     printf("Elapsed: %d msec\n",clock()-START_TIME);//May not denote timeval??Qin Xu
 }
 
-void CheckFile(FILE* fp,const char* filename)
+void CheckFile(FILE* fp,string filename)
 {
     if (fp==NULL)
     {

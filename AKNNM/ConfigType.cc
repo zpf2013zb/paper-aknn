@@ -1,4 +1,4 @@
-//
+/
 //  ConfigType.cpp
 //  generateQueries
 //

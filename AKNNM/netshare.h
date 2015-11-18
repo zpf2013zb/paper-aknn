@@ -5,15 +5,21 @@
 #include <bitset>
 #include <vector>
 #include <set>
+#include "utility.h"
+
 using namespace std;
 // handle
 #define MAX_DIST 9999999
-#define ATTRIBUTE_DIMENSION 6
 int MAX_KEYWORDS = 64;
 
 int NodeNum;
 int EdgeNum;
+
 // define the query point
+struct roadParameter {
+	int avgNKwd;
+	int avgNPt;
+};
 
 struct QueryPoint
 {
@@ -28,10 +34,10 @@ struct Query {
 	vector<QueryPoint> querypts;
 };
 
-ostream& operator<<(ostream& os, const Query& Q)
+ostream& operator<<(ostream& os, Query& Q)
 {
 	os << bitset<64>(Q.keywords).to_string() << " "<< Q.k;
-	set<QueryPoint> ::iterator iter = Q.querypts.begin();
+	vector<QueryPoint> ::iterator iter = Q.querypts.begin();
 	for (; iter != Q.querypts.end(); iter++) {
 		os << "," << iter->Ni << " " << iter->Nj << " " << iter->dist_Ni;
 	}
@@ -46,7 +52,6 @@ struct POI
 	float dist_Ni;
 	float dist_Nj;
 	float dist_toquery;
-
 };
 
 
@@ -85,46 +90,6 @@ struct DStepComparison
 };
 
 typedef	priority_queue<DStepEvent,vector<DStepEvent>,DStepComparison> DStepQueue;
-
-// for Dijkstra
-struct edgePair
-{
-    int Ni;
-    int Nj;
-};
-
-struct edgeState 
-{
-	int vState;
-	float iDisToQuery;
-	float jDisToQuery;
-};
-
-struct eSComparison
-{
-    bool operator () (const edgePair& left, const edgePair& right) const
-    {
-		//return left.disToQuery > right.disToQuery;
-		if(left.Ni == right.Ni && left.Nj == right.Nj) return true;
-		return false;
-    }
-};
-
-struct dijkVisit 
-{
-	int N;
-	float disTQ;
-};
-//?????是不是按照最小顺序排列
-struct dVComparison
-{
-    bool operator () (const dijkVisit& left, const dijkVisit& right) const
-    {
-		//return left.disToQuery > right.disToQuery;
-		return left.disTQ > right.disTQ;
-    }
-};
-typedef	priority_queue<dijkVisit ,vector<dijkVisit>,dVComparison> dVQueue;
 
 
 struct point

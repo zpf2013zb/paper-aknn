@@ -30,31 +30,22 @@
     <ClInclude Include="btree.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="ConfigType.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="diskbased.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="EGTree.h">
       <Filter>头文件</Filter>
     </ClInclude>
-    <ClInclude Include="egtree_build.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="gdata.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
     <ClInclude Include="KeywordsGenerator.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="metis.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="netshare.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="utility.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="gendata.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
@@ -71,31 +62,13 @@
     <ClCompile Include="btree.cc">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="ConfigType.cc">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="EGTree.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="egtree_build.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="gendata.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="genQueryPoint2File.cc">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="gtree_query.cpp">
-      <Filter>源文件</Filter>
-    </ClCompile>
     <ClCompile Include="KeywordsGenerator.cc">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="RkBSK-query.cc">
-      <Filter>源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="selectQueryPoints.cc">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="utility.cc">

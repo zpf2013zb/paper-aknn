@@ -1,5 +1,6 @@
 #include "StdAfx.h"
 #include "EGTree.h"
+#pragma comment(lib,"ws2_32.lib")
 
 // METIS setting options
 void options_setting() {
@@ -19,12 +20,13 @@ void options_setting() {
 	options[METIS_OPTION_NUMBERING] = 0;
 	// options[METIS_OPTION_DBGLVL] = 0;
 }
+
 // read the data from EdgeMap instead of file
 void init_input(int nOfNode, EdgeMapType EdgeMap) {
 	nLeafNode = 0;
 	// process node information
 	printf("PROCESSING NODE...");
-	// notable that vertex id in node is from 0
+	// note that vertex id starts from 0
 	for (int i = 0; i<nOfNode; i++) {
 		Node node;
 		node.isborder = false;
@@ -34,7 +36,6 @@ void init_input(int nOfNode, EdgeMapType EdgeMap) {
 
 	// load edge
 	printf("PROCESSING EDGE...");
-	//fin = fopen(FILE_EDGE, "r");
 	int eid;
 	int snid, enid;
 	double weight;
@@ -54,46 +55,8 @@ void init_input(int nOfNode, EdgeMapType EdgeMap) {
 		Nodes[enid].adjnodes.push_back(snid);
 		Nodes[enid].adjweight.push_back(iweight);
 	}
-	//fclose(fin);
 	printf("COMPLETE.\n");
 }
-
-/*
-void init_input(int nOfNode, const EdgeMapType EdgeMap){
-FILE *fin;
-
-// load node
-printf("LOADING NODE...");
-fin = fopen(FILE_NODE,"r");
-int nid;
-double x,y;
-while( fscanf(fin, "%d %lf %lf", &nid, &x, &y) == 3 ){
-Node node = { x, y };
-Nodes.push_back(node);
-}
-fclose(fin);
-printf("COMPLETE. NODE_COUNT=%d\n", (int)Nodes.size());
-
-// load edge
-printf("LOADING EDGE...");
-fin = fopen(FILE_EDGE, "r");
-int eid;
-int snid, enid;
-double weight;
-int iweight;
-noe = 0;
-while( fscanf(fin,"%d %d %d %lf", &eid, &snid, &enid, &weight ) == 4 ){
-noe ++;
-iweight = (int) (weight * WEIGHT_INFLATE_FACTOR);
-Nodes[snid].adjnodes.push_back( enid );
-Nodes[snid].adjweight.push_back( iweight );
-Nodes[enid].adjnodes.push_back( snid );
-Nodes[enid].adjweight.push_back( iweight );
-}
-fclose(fin);
-printf("COMPLETE.\n");
-}
-*/
 
 // transform original data format to that suitable for METIS
 void data_transform_init(set<int> &nset) {
@@ -232,6 +195,7 @@ void build(EdgeMapType EdgeMap) {
 	TreeNode root;
 	root.isleaf = false;
 	root.father = -1;
+	root.unionkwds = 0;
 	EGTree.push_back(root);
 
 	// init stack
@@ -248,7 +212,6 @@ void build(EdgeMapType EdgeMap) {
 	// start to build
 	unordered_map<int, int> presult;
 	set<int> childset[PARTITION_PART];
-
 
 	while (buildstack.size() > 0) {
 		// pop top
@@ -267,26 +230,8 @@ void build(EdgeMapType EdgeMap) {
 			EGTree[current.tnid].isleaf = true;
 			EGTree[current.tnid].leafnodes.clear();
 			for (set<int>::iterator it = current.nset.begin(); it != current.nset.end(); it++) {
-				EGTree[current.tnid].leafnodes.push_back(*it);
-				//---------修改partID
-				//partID[*it] = current.tnid;
-				/*
-				//------------------------------计算整个区域的上下界和关键字 
-				//---------------------M--replace the adjList with Nodes--------
-				for (int i = 0; i<Nodes[*it].adjnodes.size(); i++) {
-					int Nj = Nodes[*it].adjnodes[i];	// Nk can be smaller or greater than Ni !!!
-					edge* e = EdgeMap[getKey(*it, Nj)];
-
-					if (it == current.nset.begin()) { //直接初始化				
-						EGTree[current.tnid].unionkwds = e->sumkwds;
-					}
-					else {					
-						EGTree[current.tnid].unionkwds |= e->sumkwds;
-					}
-
-				}//endfor i
-				*/
-			}//endfor iteration
+				EGTree[current.tnid].leafnodes.push_back(*it);				
+			}
 			continue;
 		}
 
@@ -312,6 +257,7 @@ void build(EdgeMapType EdgeMap) {
 			TreeNode tnode;
 			tnode.isleaf = false;
 			tnode.father = current.tnid;
+			tnode.unionkwds = 0;
 
 			// insert to EGTree first
 			EGTree.push_back(tnode);
@@ -349,12 +295,13 @@ void build(EdgeMapType EdgeMap) {
 }
 
 // dump EGTree index to file
-void egtree_save(const char* filename) {
+void egtree_save(string filename) {
 	// FILE_GTREE
 	printf("making egtreeFile\n");
-	FILE *fout = fopen(filename, "wb");
+	FILE *fout = fopen(filename.c_str(), "wb");
 	int *buf = new int[Nodes.size()];
 	float *buff = new float[Nodes.size()];
+
 	for (int i = 0; i < EGTree.size(); i++) {
 		// borders
 		int count_borders = EGTree[i].borders.size();
@@ -403,19 +350,6 @@ void egtree_save(const char* filename) {
 		}		
 	}
 	fclose(fout);
-
-	//**************************************************
-	//保存EGBU和EGTD信息
-
-	// FILE_NODES_GTREE_PATH
-	fout = fopen(FILE_NODES_GTREE_PATH, "wb");
-	for (int i = 0; i < Nodes.size(); i++) {
-		int count = Nodes[i].egtreepath.size();
-		fwrite(&count, sizeof(int), 1, fout);
-		copy(Nodes[i].egtreepath.begin(), Nodes[i].egtreepath.end(), buf);
-		fwrite(buf, sizeof(int), count, fout);
-	}
-	fclose(fout);
 	delete[] buf;
 }
 
@@ -432,7 +366,6 @@ void egtree_load(const char* filename, vector<TreeNode>& EGTree) {
 
 	// clear EGTree
 	EGTree.clear();
-
 	while (fread(&count_borders, sizeof(int), 1, fin)) {
 		TreeNode tn;
 		// borders
@@ -460,9 +393,6 @@ void egtree_load(const char* filename, vector<TreeNode>& EGTree) {
 		fread(&father, sizeof(int), 1, fin);
 		tn.father = father;
 
-		//**************************************************
-		//加载EGBU和EGTD信息
-
 		// union_border
 		int count_unionBorder;
 		fread(&count_unionBorder, sizeof(int), 1, fin);
@@ -472,8 +402,7 @@ void egtree_load(const char* filename, vector<TreeNode>& EGTree) {
 		}
 		// mind
 		int count_mind;
-		fread(&count_mind, sizeof(float), 1, fin);
-		//copy(EGTree[i].leafnodes.begin(), EGTree[i].leafnodes.end(), buf);
+		fread(&count_mind, sizeof(int), 1, fin);
 		fread(buff, sizeof(float), count_mind, fin);
 		for (int i = 0; i < count_mind; i++) {
 			tn.mind.push_back(buff[i]);
@@ -484,38 +413,16 @@ void egtree_load(const char* filename, vector<TreeNode>& EGTree) {
 		// coverkwds;
 		int count_coverkwds;
 		fread(&count_coverkwds, sizeof(int), 1, fin);
-		int tempKwd;
+		unsigned long long tempKwd;
 		for (int i = 0; i < count_coverkwds; i++) {
-			fread(&tempKwd, sizeof(int), 1, fin);
+			fread(&tempKwd, sizeof(unsigned long long), 1, fin);
 			tn.coverkwds.insert(tempKwd);
 		}
-		
 		EGTree.push_back(tn);
 	}
 	fclose(fin);
 	delete[] buf;
 	delete[] buff;
-	//--------------------------M-- no use---------------------
-	/*
-	//**************************************************
-	//加载EGBU和EGTD信息
-	// FILE_NODES_GTREE_PATH
-	int count;
-	fin = fopen( FILE_NODES_GTREE_PATH, "rb" );
-	int pos = 0;
-	while( fread( &count, sizeof(int), 1, fin ) ){
-	fread( buf, sizeof(int), count, fin );
-	// clear egtreepath
-	Nodes[pos].egtreepath.clear();
-	for ( int i = 0; i < count; i++ ){
-	Nodes[pos].egtreepath.push_back( buf[i] );
-	}
-	// pos increase
-	pos ++;
-	}
-	fclose(fin);
-	delete[] buf;
-	*/
 }
 
 // dijkstra search, used for single-source shortest path search WITHIN one EGTree leaf node!
@@ -592,7 +499,7 @@ vector<int> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph) {
 	return output;
 }
 
-bool sortBySize(unsigned long long left, unsigned long long right) {
+bool sortBySize(const unsigned long long& left, const unsigned long long& right) {
 	bitset<MAX_KEYWORDS> l(left);
 	bitset<MAX_KEYWORDS> r(right);
 	return l.count() < r.count();
@@ -600,56 +507,54 @@ bool sortBySize(unsigned long long left, unsigned long long right) {
 
 void handleCovKwd(int tn, set<unsigned long long> nodecoverkwds) {
 	
-	//first handle kwd
+	// first handle kwd
 	set<unsigned long long> temp(nodecoverkwds);
-	sort(temp.begin(), temp.end(), sortBySize);
+	//sort(temp.begin(), temp.end(), sortBySize);
 
 	set<unsigned long long>::iterator iti = temp.begin();
 	set<unsigned long long>::iterator itj;
 	// 首先删除被包含的关键字
 	for (; iti != temp.end();) {
 		unsigned long long ki = *iti;
-		for (itj = ++iti ; itj != temp.end();) {
-			iti--;
+		iti++;
+		for (itj = iti ; itj != temp.end();) {
 			unsigned long long kj = *itj;
 			if ((ki&kj)==kj) {
 				itj = temp.erase(itj);
 			}
-			else { // l can represent r
-				   // remove r
+			else { 
 				itj++;
 			}
 		}
-		iti++;
 	}
 	
-	// 迭代合并关键字
-	
+	// 迭代合并关键字	
 	while (temp.size() > covThre) {
 		// 第一步合并重叠最多的关键字
-		sort(temp.begin(), temp.end(), sortBySize);
+		//sort(temp.begin(), temp.end(), sortBySize);
 		set<unsigned long long>::iterator unioni;
 		set<unsigned long long>::iterator unionj;
 		int max = 0;
 		unsigned long long intesect;
 		unsigned long long maxunion;
-		for (iti = temp.begin(); iti != temp.end(); iti++) {
+		for (iti = temp.begin(); iti != temp.end(); ) {
 			unsigned long long ki = *iti;
 			bitset<MAX_KEYWORDS> l(ki);
 			if (l.count() <= max) break;
-			for (itj = ++iti; itj != temp.end();itj++) {
-				iti--;
+			iti++;
+			for (itj = iti; itj != temp.end();itj++) {
 				unsigned long long kj = *itj;
 				bitset<MAX_KEYWORDS> r(kj);
 				if (r.count() <= max) break;
 
-				intesect = ki&kj;
-				maxunion = ki | kj;
+				intesect = ki & kj;
+
 				bitset<MAX_KEYWORDS> intersc(intesect);
 				if (intersc.count() > max) {
 					max = intersc.count();
 					unioni = iti;
 					unionj = itj;
+					maxunion = ki | kj;
 				}				
 			}
 		}
@@ -660,6 +565,9 @@ void handleCovKwd(int tn, set<unsigned long long> nodecoverkwds) {
 			unsigned long long ki = *iti;
 			if ((maxunion&ki) == ki) {
 				iti = temp.erase(iti);
+			}
+			else {
+				iti++;
 			}
 		}
 		temp.insert(maxunion);
@@ -710,8 +618,7 @@ void hierarchy_shortest_path_calculation() {
 	int s, t, tn, nid, cid, weight;
 	vector<int> tnodes, tweight;
 	set<int> nset;
-	//set<set<int>> nodeKwd;// 关键字信息等到该节点处理完成后统一处理，而关键字信息一样
-	set<unsigned long long> nodecoverkwds;
+	set<unsigned long long> nodecoverkwds; // 关键系信息等该节点访问完后统一处理
 
 	for (int i = treenodelevel.size() - 1; i >= 0; i--) {
 		for (int j = 0; j < treenodelevel[i].size(); j++) {
@@ -720,22 +627,18 @@ void hierarchy_shortest_path_calculation() {
 
 			nodecoverkwds.clear();
 			cands.clear();
+			vertex_pairs.clear();
 
 			if (EGTree[tn].isleaf) {
 				//sort lefenodes and union_borders
-				sort(EGTree[tn].leafnodes.begin(), EGTree[tn].leafnodes.end());
-				sort(EGTree[tn].borders.begin(), EGTree[tn].borders.end());
+				//std::sort(EGTree[tn].leafnodes.begin(), EGTree[tn].leafnodes.end(), less<int>());
+				//std::sort(EGTree[tn].borders.begin(), EGTree[tn].borders.end(), less<int>());
 				// cands = leafnodes
 				cands = EGTree[tn].leafnodes;
-				// union borders = borders;
 				EGTree[tn].union_borders = EGTree[tn].borders;
 
 				//--------------record the mind information
-				vertex_pairs.clear();
-
-				// for each border, do min dis
-				//int cc = 0;
-
+				
 				for (int k = 0; k < EGTree[tn].union_borders.size(); k++) {
 					//printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, EGTree[tn].union_borders[k] );
 					result = dijkstra_candidate(EGTree[tn].union_borders[k], cands, graph);
@@ -757,29 +660,20 @@ void hierarchy_shortest_path_calculation() {
 					for (int p = 0; p < adjSize; p++) {
 						int nodej = Nodes[nodei].adjnodes[p];
 						keyID = getKey(nodei, nodej);
-						//if (visitedEdgeKey.count(keyID) == 0) {// this edge has not been visited
-						//visitedEdgeKey.insert(keyID);
+
 						edge *e = EdgeMap[keyID];
 						vector<InerNode> inode = e->pts;
+						// handle unionkwds
+						EGTree[tn].unionkwds = EGTree[tn].unionkwds | e->sumkwds;
+						// handle coverkwds
 						for (int b = 0; b < inode.size(); b++) {
-							InerNode tempN = inode[b];
-							//set<int> poiKwd = tempN.kwd;
-							//nodeKwd.insert(tempN.kwd);
-							if (b == 0) {
-								EGTree[tn].unionkwds = tempN.vct;
-							}
-							else {
-								EGTree[tn].unionkwds |= tempN.vct;
-							}
+							InerNode tempN = inode[b];			
 							if (nodecoverkwds.find(tempN.vct)==nodecoverkwds.end()) {
 								nodecoverkwds.insert(tempN.vct);
 							}
 						}
-
-						//}
 					}
-
-					//统一处理所有的InterNode信息
+					// 统一处理所有的InterNode信息
 					handleCovKwd(tn, nodecoverkwds);
 				}
 			}
@@ -795,7 +689,10 @@ void hierarchy_shortest_path_calculation() {
 						// handle cover keywords 
 						set<unsigned long long> ::iterator unionk = EGTree[cid].coverkwds.begin();
 						for (; unionk != EGTree[cid].coverkwds.end(); unionk++) {
-							nodecoverkwds.insert(*unionk);
+							unsigned long long kwd = *unionk;
+							if (nodecoverkwds.find(kwd) == nodecoverkwds.end()) {
+								nodecoverkwds.insert(kwd);
+							}
 						}
 						
 					}
@@ -814,7 +711,6 @@ void hierarchy_shortest_path_calculation() {
 				}
 				//---------------extend for EGTD---------------
 				handleCovKwd(tn, nodecoverkwds);
-				// union borders = cands;
 
 				cands.clear();
 				for (set<int>::iterator it = nset.begin(); it != nset.end(); it++) {
@@ -822,12 +718,10 @@ void hierarchy_shortest_path_calculation() {
 				}
 				EGTree[tn].union_borders = cands;
 				//sort lefenodes and union_borders
-				sort(EGTree[tn].union_borders.begin(), EGTree[tn].union_borders.end());
-				sort(cands.begin(), cands.end());
+				//std::sort(EGTree[tn].union_borders.begin(), EGTree[tn].union_borders.end(), less<int>());
+				//std::sort(cands.begin(), cands.end(), less<int>());
 
-				//------------------------record the mind information
-				vertex_pairs.clear();
-
+				//------------------------record the mind information			
 				// for each border, do min dis
 				//int cc = 0;
 
@@ -840,34 +734,12 @@ void hierarchy_shortest_path_calculation() {
 					for (int p = 0; p < result.size(); p++) {
 						if (k <= p) {
 							EGTree[tn].mind.push_back(result[p]);
-						}
+						}						
 						vertex_pairs[EGTree[tn].union_borders[k]][cands[p]] = result[p];
+						vertex_pairs[EGTree[tn].union_borders[p]][cands[k]] = result[p];
 					}
 				}
-
-
-
-			}
-			//------------------------------以前代码-----------------------------------
-			// start to do min dis
-			/*
-			vertex_pairs.clear();
-
-			// for each border, do min dis
-			//int cc = 0;
-
-			for ( int k = 0; k < EGTree[tn].union_borders.size(); k++ ){
-			//printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, EGTree[tn].union_borders[k] );
-			result = dijkstra_candidate( EGTree[tn].union_borders[k], cands, graph );
-			//printf("DIJKSTRA...END\n");
-
-			// save to map
-			for ( int p = 0; p < result.size(); p ++ ){
-			EGTree[tn].mind.push_back( result[p] );
-			vertex_pairs[EGTree[tn].union_borders[k]][cands[p]] = result[p];
-			}
-			}
-			*/
+			}			
 
 			// IMPORTANT! after all border finished, degenerate graph,###用于简化Dijkstra算法距离计算
 			// first, remove inward edges
@@ -905,86 +777,14 @@ void hierarchy_shortest_path_calculation() {
 	}
 }
 
-// --------------------------M-- no use------------
-/*
-// dump distance matrix into file
-void hierarchy_shortest_path_save(){
-FILE* fout = fopen( FILE_ONTREE_MIND, "wb" );
-int* buf;
-int count;
-for ( int i = 0; i < EGTree.size(); i++ ){
-// union borders
-count = EGTree[i].union_borders.size();
-fwrite( &count, sizeof(int), 1, fout );
-buf = new int[count];
-copy( EGTree[i].union_borders.begin(), EGTree[i].union_borders.end(), buf );
-fwrite( buf, sizeof(int), count, fout );
-delete[] buf;
-// mind
-count = EGTree[i].mind.size();
-fwrite( &count, sizeof(int), 1, fout );
-buf = new int[count];
-copy( EGTree[i].mind.begin(), EGTree[i].mind.end(), buf );
-fwrite( buf, sizeof(int), count, fout );
-delete[] buf;
-}
-fclose(fout);
-}
-
-// --------------------------M-- no use------------
-// load distance matrix from file
-void hierarchy_shortest_path_load(){
-FILE* fin = fopen( FILE_ONTREE_MIND, "rb" );
-int* buf;
-int count, pos = 0;
-while( fread( &count, sizeof(int), 1, fin ) ){
-// union borders
-buf = new int[count];
-fread( buf, sizeof(int), count, fin );
-EGTree[pos].union_borders.clear();
-for ( int i = 0; i < count; i++ ){
-EGTree[pos].union_borders.push_back(buf[i]);
-}
-delete[] buf;
-// mind
-fread( &count, sizeof(int), 1, fin );
-buf = new int[count];
-fread( buf, sizeof(int), count, fin );
-EGTree[pos].mind.clear();
-for ( int i = 0; i < count; i++ ){
-EGTree[pos].mind.push_back(buf[i]);
-}
-pos++;
-delete[] buf;
-}
-fclose(fin);
-}
-*/
-
-int mainFunction(int nOfNode, EdgeMapType EdgeMap) { // main function{
-													 // init
-	TIME_TICK_START
+int mainEgtree(int nOfNode, EdgeMapType EdgeMap) { 
+	// initiate the input and gtree parameters	
 	init(nOfNode, EdgeMap);
-	TIME_TICK_END
-	TIME_TICK_PRINT("INIT")
 
-	// gtree_build
-	TIME_TICK_START
+	// egtree_build
 	build(EdgeMap);
-	TIME_TICK_END
-	TIME_TICK_PRINT("BUILD")
 
-	// calculate distance matrix
-	TIME_TICK_START
+	// hierarchy_build the distance matrix
 	hierarchy_shortest_path_calculation();
-	TIME_TICK_END
-	TIME_TICK_PRINT("MIND")
-
-	// dump EGTree
-	//-------------------------------M-- save in genData----
-	//egtree_save();
-	// dump distance matrix
-	//hierarchy_shortest_path_save();
-
 	return 0;
 }

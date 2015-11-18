@@ -8,8 +8,7 @@
 #include<memory.h>
 #include<unordered_map>
 #include<map>
-#include<set>
-#include<deque>
+#include<set>#include<deque>
 #include<stack>
 #include<algorithm>
 #include<sys/time.h>

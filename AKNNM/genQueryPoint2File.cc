@@ -36,8 +36,7 @@ void getRandEdge(int &Ni,int &Nj,float &Edgedist)
     do
     {
 		// get the random edge 
-        //Ni=random(INT_MAX)%NodeNum;
-		Ni = rand() % NodeNum + 1;
+		Ni = rand() % NodeNum;
         adjgrpaddr=getAdjListGrpAddr(Ni);
 		// adjsize record the number of adjacency edges
         getFixedF(SIZE_A,Ref(adjsize),adjgrpaddr);
