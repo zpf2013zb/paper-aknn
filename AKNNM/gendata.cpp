@@ -1,13 +1,21 @@
 #include "gendata.h"
-#pragma comment(lib,"ws2_32.lib")
+#include "utility.h"
+#include "netshare.h"
+#include "egtree.h"
+#include "KeywordsGenerator.h"
+//#pragma comment(lib,"ws2_32.lib")
+
 #define MAX_KEYWORDSN 64
+#define MAXLEVEL 10
+#define MAXKWD 64
 
 // to be initialized
 char **cur_block;
 int *cur_block_offset, *cur_node_maxkey, *cur_node_entries;
 char *block;
-int i_capacity, root_block_id, num_written_blocks, top_level;
-int BlkLen;
+int  root_block_id, num_written_blocks, top_level;
+extern int BlkLen;
+extern int i_capacity;
 
 int PtMaxKey = 0;
 bool PtMaxUsing = false;	// for solving the bug that was to find
@@ -21,9 +29,8 @@ int num_K;
 float STEP_SIZE;
 float MAX_SEG_DIST;
 float AVG_DEG;
+extern vector <TreeNode> EGTree;
 
-#define MAXLEVEL 10
-#define MAXKWD 64
 
 struct PartAddr {
 	int part;
@@ -141,7 +148,7 @@ struct ComparInerNode
 //------extend for egtree
 void makeEPtFiles(FILE *ptFile, char* treefile) {
 	// construct the extend point file
-	set<int> vEdgeKey;
+	set<__int64> vEdgeKey;
 	int sizep = sizeof(int) + sizeof(float) + sizeof(unsigned long long);
 	PtMaxUsing=true;							 
 	BTree* bt=initialize(treefile);
@@ -150,27 +157,30 @@ void makeEPtFiles(FILE *ptFile, char* treefile) {
 	int treeNodeID = 0;
 	int nodeID = 0;
 	int RawAddr = 0, key = 0, size, PtSize;
+	int numedge = 0;
 	for (; treeNodeID < EGTree.size(); treeNodeID++) {
 		if (!EGTree[treeNodeID].isleaf) continue;
 		// is leaf node ,sort it in ascend order
-		//std::sort(EGTree[treeNodeID].leafnodes.begin(), EGTree[treeNodeID].leafnodes.end(), less<int>());
+		sort(EGTree[treeNodeID].leafnodes.begin(), EGTree[treeNodeID].leafnodes.end(), less<int>());
 		for (int i = 0; i<EGTree[treeNodeID].leafnodes.size(); i++) {
 			nodeID = EGTree[treeNodeID].leafnodes[i];
+			__int64 nid = nodeID;
 			partID[nodeID].part = treeNodeID;
 			// put the adjacent nodes of this node into adjList
 			for (int j = 0; j<AdjList[nodeID].size(); j++) {
 				int Nj = AdjList[nodeID][j];
+				__int64 nje = Nj;
 				// Nk can be smaller or greater than Ni !!!
-				int mapkey = getKey(nodeID, Nj);
-				if (vEdgeKey.count(mapkey) != 0) {// this edge has not been visited
+				__int64 mapkey = getKey(nid, nje);
+				if (vEdgeKey.find(mapkey) != vEdgeKey.end()) {// this edge has been visited
 					continue;
 				}
 				vEdgeKey.insert(mapkey);
-
+				numedge++;
 				edge* e = EdgeMap[mapkey];			
 				PtSize = e->pts.size();
 				if (PtSize>0) {
-					//std::sort(e->pts.begin(), e->pts.end(), ComparInerNode());
+					sort(e->pts.begin(), e->pts.end(), ComparInerNode());
 					RawAddr = ftell(ptFile);	// set addr to correct amt.
 					fwrite(&(e->Ni), 1, sizeof(int), ptFile);
 					fwrite(&(e->Nj), 1, sizeof(int), ptFile);
@@ -191,6 +201,7 @@ void makeEPtFiles(FILE *ptFile, char* treefile) {
 			}
 		}
 	}
+	printf("Build-pt The number of edge is:%d\n", numedge);
 	finalize(bt);
 	bt->UserField=num_D;
 	delete bt;
@@ -214,17 +225,20 @@ void makeEAdjListFiles(FILE *alFile) { // construct the extend adjacentList file
 	for (; treeNodeID < EGTree.size(); treeNodeID++) {
 		if (!EGTree[treeNodeID].isleaf) continue;
 		// is leaf node ,may be no use
-		//std::sort(EGTree[treeNodeID].leafnodes.begin(), EGTree[treeNodeID].leafnodes.end(), less<int>());
+		sort(EGTree[treeNodeID].leafnodes.begin(), EGTree[treeNodeID].leafnodes.end(), less<int>());
 		for (int i = 0; i<EGTree[treeNodeID].leafnodes.size(); i++) {
 			nodeID = EGTree[treeNodeID].leafnodes[i];
+			__int64 nid = nodeID;
 			partID[nodeID].addr = addrss;
 			size = AdjList[nodeID].size();
 			fwrite(&(size), 1, sizeof(int), alFile);
 			addrss = addrss + sizeof(int);
-			for (int k = 0; k<AdjList[nodeID].size(); k++)
+			for (int k = 0; k<size; k++)
 			{
 				int Nk = AdjList[nodeID][k];	// Nk can be smaller or greater than Ni !!!
-				edge* e = EdgeMap[getKey(nodeID, Nk)];				
+				__int64 Nke = Nk;
+				__int64 keyv = getKey(nid, Nke);
+				edge* e = EdgeMap[keyv];				
 
 				fwrite(&Nk, 1, sizeof(int), alFile);
 				fwrite(&(e->dist), 1, sizeof(float), alFile);
@@ -247,16 +261,26 @@ void BuildEBinaryStorage(string fileprefix) { // construct the extend binary sto
 	char tmpFileName[255];
 
 	FILE *ptFile, *edgeFile;
-	sprintf(tmpFileName, "%s\\pfile", fileprefix);
-	remove(tmpFileName); // remove existing file
-	ptFile = fopen(tmpFileName, "w+");
-	sprintf(tmpFileName,"%s\\pbtree",fileprefix);
-	remove(tmpFileName); // remove existing file
-	makeEPtFiles(ptFile, tmpFileName);
+	string name;
+	name = fileprefix + "\\pfile";
+	remove(name.c_str()); // remove existing file
+	ptFile = fopen(name.c_str(), "wb+");
+	name.clear();
+	name = fileprefix + "\\pbtree";
+	//sprintf(tmpFileName,"%s\\pbtree",fileprefix);
+	//remove(tmpFileName); // remove existing file
+	remove(name.c_str()); // remove existing file
+	char* c;
+	int len = name.length();
+	c = new char[len + 1];
+	strcpy(c, name.c_str());
+	makeEPtFiles(ptFile, c);
 
-	sprintf(tmpFileName, "%s\\adjlist", fileprefix);
-	remove(tmpFileName); // remove existing file
-	edgeFile = fopen(tmpFileName, "w+");
+	name.clear();
+	name = fileprefix + "\\adjlist";
+
+	remove(name.c_str()); // remove existing file
+	edgeFile = fopen(name.c_str(), "wb+");
 	makeEAdjListFiles(edgeFile);
 
 	// generate reserve the part and address information
@@ -265,25 +289,69 @@ void BuildEBinaryStorage(string fileprefix) { // construct the extend binary sto
 	fclose(ptFile);
 	fclose(edgeFile);
 }
-
+/*
 void partAddrSave(string fileprefix) {
 
 	printf("making partAddrFile\n");
 	FILE *paFile;
 	char tmpFileName[255];
-
-	sprintf(tmpFileName, "%s\\partAddr", fileprefix);
-	remove(tmpFileName); // remove existing file
-	paFile = fopen(tmpFileName, "w+");
+	string name;
+	name = fileprefix + "\\partAddr";
+	//sprintf(tmpFileName, "%s\\partAddr", fileprefix);
+	remove(name.c_str()); // remove existing file
+	paFile = fopen(name.c_str(), "w+");
 
 	fwrite(&NodeNum, 1, sizeof(int), paFile);
 	map<int, PartAddr>::iterator my_Itr;
+	int num = partID.size();
+	int i = 0;
 	for (my_Itr = partID.begin(); my_Itr != partID.end(); ++my_Itr) {
-		fwrite(&my_Itr->first, 1, sizeof(int), paFile);
-		fwrite(&my_Itr->second.part, 1, sizeof(int), paFile);
-		fwrite(&my_Itr->second.addr, 1, sizeof(int), paFile);
+		int first, pt, addr;
+		first = my_Itr->first;
+		pt = my_Itr->second.part;
+		addr = my_Itr->second.addr;
+		
+		fwrite(&first,sizeof(int),1, paFile);
+		fwrite(&pt,sizeof(int),1, paFile);
+		fwrite(&addr, sizeof(int),1,paFile);
+		printf("i:%d, nodeid:%d, part:%d, addr:%d\n", i, my_Itr->first, my_Itr->second.part, my_Itr->second.addr);
+		i++;
 	}
 	fclose(paFile);
+}
+*/
+
+void partAddrSave(string fileprefix) {
+
+	printf("making partAddrFile\n");
+	//FILE *paFile;
+	char tmpFileName[255];
+	string name;
+	name = fileprefix + "\\partAddr";
+	//sprintf(tmpFileName, "%s\\partAddr", fileprefix);
+	remove(name.c_str()); // remove existing file
+	ofstream paFile(name.c_str());
+	//ofstream owFile(objwetFile.c_str());
+	//fwrite(&NodeNum, 1, sizeof(int), paFile);
+	map<int, PartAddr>::iterator my_Itr;
+	int num = partID.size();
+	int i = 0;
+	for (my_Itr = partID.begin(); my_Itr != partID.end(); ++my_Itr) {
+		int first, pt, addr;
+		first = my_Itr->first;
+		pt = my_Itr->second.part;
+		addr = my_Itr->second.addr;
+
+		paFile << first << " " << pt << " " << addr << endl;
+
+		//fwrite(&first, sizeof(int), 1, paFile);
+		//fwrite(&pt, sizeof(int), 1, paFile);
+		//fwrite(&addr, sizeof(int), 1, paFile);
+		printf("i:%d, nodeid:%d, part:%d, addr:%d\n", i, my_Itr->first, my_Itr->second.part, my_Itr->second.addr);
+		i++;
+	}
+	//fclose(paFile);
+	paFile.close();
 }
 
 FastArray<float> xcrd, ycrd;
@@ -293,8 +361,9 @@ FastArray<float> xcrd, ycrd;
 void ReadRealNetwork(std::string prefix_name, int _NodeNum)
 {
 	int eid, Ni, Nj;
+	//int eid;
 	float dist, x, y;
-
+	//unsigned int Ni, Nj;
 	string roadf;
 	roadf = prefix_name + "\\road";	
 
@@ -310,23 +379,37 @@ void ReadRealNetwork(std::string prefix_name, int _NodeNum)
 	NodeNum++;
 	printf("%d nodes read, ", NodeNum);
 	PrintElapsed();
-
+	set<int> edgeid;
 	fseek(roadp, 0, SEEK_SET);
 	AdjList = new FastArray<int>[NodeNum];
 	EdgeNum = 0;
+	EdgeMap.clear();
+	int loop = 0;
+	vector<__int64> vist;
 	while (!feof(roadp))
-	{
+	{	
 		fscanf(roadp, "%d %d %d %f\n", &eid, &Ni, &Nj, &dist);
 		if (Ni < NodeNum && Nj < NodeNum)  	// ignore edges outside the range
 		{
 			//printf( "%d %d %d %f\n", id, Ni, Nj, dist);
+			__int64  a = Ni;
+			__int64  b = Nj;
+			__int64 key = getKey(a, b);
+			if (find(vist.begin(), vist.end(), key) != vist.end()) {
+				continue;
+			}
+			vist.push_back(key);
 			edge* e = new edge;
 			e->dist = dist;
 			e->Ni = Ni<Nj ? Ni : Nj;
 			e->Nj = Ni<Nj ? Nj : Ni;	// enforce the constriant Ni<Nj
 			AdjList[Ni].push_back(Nj);
 			AdjList[Nj].push_back(Ni);
-			EdgeMap[getKey(Ni, Nj)] = e;	// should be ok
+			
+			//if(EdgeMap[key]->FirstRow)
+			int vists = vist.size();
+			//printf(" %d\n", vists);
+			EdgeMap[key] = e;	// should be ok
 			EdgeNum++;
 		}
 	}
@@ -522,11 +605,11 @@ void getOutliersFromFile(char* prefix_name)
 int mainGenData(string prxfilename, roadParameter rp)
 {
 	InitClock();	// side effect: init. seeds for random generators
-	ReadRealNetwork(prxfilename+"\\road", 0);
-	ConnectedGraphCheck();
+	//string road = prxfilename + "\\road";
+	ReadRealNetwork(prxfilename, 0);
+	//ConnectedGraphCheck();
 
-
-	/*
+	
 	GenOutliers(EdgeNum*rp.avgNPt, rp.avgNKwd);
 	printf("Avg keyword # per object:%f\n",float(num_K)/num_D);
 
@@ -534,7 +617,7 @@ int mainGenData(string prxfilename, roadParameter rp)
 	mainEgtree(NodeNum, EdgeMap);
 	BuildEBinaryStorage(prxfilename);
 	egtree_save(prxfilename+"\\egtree");
-	finalize();
+	//finalize();
 
 	ofstream fout(prxfilename + "_Information");
 	fout << "Number of Vertexes:" << NodeNum << endl;
@@ -544,7 +627,7 @@ int mainGenData(string prxfilename, roadParameter rp)
 	fout << "Avg Keywords numbers per POI:" << float(num_K) / num_D << endl;
 	fout.close();
 	PrintElapsed();
-	*/
+	//*/
 	return 0;
 }
 

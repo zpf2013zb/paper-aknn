@@ -11,6 +11,7 @@
 #include <vector>
 
 //#define MAX_KEYWORDS 64
+#define MAX_KEYWORDS 64
 
 std::vector<unsigned long long> KeywordsGenerator::getKeywords(std::size_t totalNumberOfNodes, std::size_t avgKeywords)
 {

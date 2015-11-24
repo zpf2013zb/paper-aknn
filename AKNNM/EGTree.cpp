@@ -1,10 +1,60 @@
+#pragma warning(disable : 4996)
 #include "StdAfx.h"
 #include "EGTree.h"
-#pragma comment(lib,"ws2_32.lib")
+#include "utility.h"
+#include "KeywordsGenerator.h"
+#include<metis.h>
+
+// offset 
+#define _FILE_OFFSET_BITS 64
+// set all edge weight to 1(unweighted graph)
+#define ADJWEIGHT_SET_TO_ALL_ONE true
+// we assume edge weight is integer, thus (input edge) * WEIGHT_INFLATE_FACTOR = (our edge weight)
+#define WEIGHT_INFLATE_FACTOR 100000
+// egtree fanout
+#define PARTITION_PART 4
+// egtree leaf node capacity = tau(in paper)
+#define LEAF_CAP 32
+#define ATTRIBUTE_DIMENSION 6
+#define SKY_PARTITION 5
+#define edDis 0.5
+#define covThre 10
+#define splitBlock 5
+
+/********************************DataStructure************************************/
+//-----basic infromation of gtree----------------------
+
+
+int noe; // number of edges
+int nLeafNode;
+vector<Node> Nodes;
+
+// init status struct
+typedef struct {
+	int tnid; // tree node id
+	set<int> nset; // node set
+}Status;
+
+// use for metis
+// idx_t = int64_t / real_t = double
+idx_t nvtxs; // |vertices|
+idx_t ncon; // number of weight per vertex 
+idx_t* xadj; // array of adjacency of indices
+idx_t* adjncy; // array of adjacency nodes
+idx_t* vwgt; // array of weight of nodes
+idx_t* adjwgt; // array of weight of edges in adjncy
+idx_t nparts; // number of parts to partition
+idx_t objval; // edge cut for partitioning solution
+idx_t* part; // array of partition vector
+idx_t options[METIS_NOPTIONS]; // option array
+
+vector<TreeNode> EGTree;
 
 // METIS setting options
 void options_setting() {
+	printf("EGtree-option_setting start.\n");
 	METIS_SetDefaultOptions(options);
+	
 	options[METIS_OPTION_PTYPE] = METIS_PTYPE_KWAY; // _RB
 	options[METIS_OPTION_OBJTYPE] = METIS_OBJTYPE_CUT; // _VOL
 	options[METIS_OPTION_CTYPE] = METIS_CTYPE_SHEM; // _RM
@@ -13,18 +63,19 @@ void options_setting() {
 	options[METIS_OPTION_NCUTS] = 1;
 	options[METIS_OPTION_NITER] = 10;
 	/* balance factor, used to be 500 */
-	options[METIS_OPTION_UFACTOR] = 500;
+	//options[METIS_OPTION_UFACTOR] = 500;
 	// options[METIS_OPTION_MINCONN];
 	options[METIS_OPTION_CONTIG] = 1;
 	// options[METIS_OPTION_SEED];
 	options[METIS_OPTION_NUMBERING] = 0;
-	// options[METIS_OPTION_DBGLVL] = 0;
+	// options[METIS_OPTION_DBGLVL] = 0; 
 }
 
 // read the data from EdgeMap instead of file
 void init_input(int nOfNode, EdgeMapType EdgeMap) {
 	nLeafNode = 0;
 	// process node information
+	printf("EGtree-init_input start.\n");
 	printf("PROCESSING NODE...");
 	// note that vertex id starts from 0
 	for (int i = 0; i<nOfNode; i++) {
@@ -42,6 +93,8 @@ void init_input(int nOfNode, EdgeMapType EdgeMap) {
 	int iweight;
 	noe = 0;
 	EdgeMapType::iterator iter = EdgeMap.begin();
+	int n = EdgeMap.size();
+	printf("EdgeMap size is :%d", n);
 	for (; iter != EdgeMap.end(); iter++) {
 		edge* e = iter->second;
 		noe++;
@@ -120,6 +173,7 @@ void data_transform_init(set<int> &nset) {
 }
 
 void init(int nOfNode, const EdgeMapType EdgeMap) {
+	printf("EGtree-init start.");
 	init_input(nOfNode, EdgeMap);
 	options_setting();
 }
@@ -139,10 +193,13 @@ unordered_map<int, int> graph_partition(set<int> &nset) {
 
 	// transform data to metis
 	data_transform_init(nset);
-
 	// partition, result -> part
 	// k way partition
 	int returnstate;
+	for (int i = 0; i < 100; i++) {
+		idx_t n = adjncy[i];
+		n++;
+	}
 	returnstate = METIS_PartGraphKway(
 		&nvtxs,
 		&ncon,
@@ -158,6 +215,7 @@ unordered_map<int, int> graph_partition(set<int> &nset) {
 		&objval,
 		part
 		);
+	
 	// return result state
 	if (METIS_ERROR_INPUT == returnstate) {
 		printf("Input Error!");
@@ -181,6 +239,7 @@ unordered_map<int, int> graph_partition(set<int> &nset) {
 	// 又将结果变回来了，在上面采用nodemap可能是为了满足一定的条件，part中的结果是什么呢？子部分用什么来表示呢？
 	for (set<int>::iterator it = nset.begin(); it != nset.end(); it++, i++) {
 		result[*it] = part[i];
+		//printf("The part is:%d\n", part[i]);
 	}
 
 	// finalize
@@ -191,6 +250,7 @@ unordered_map<int, int> graph_partition(set<int> &nset) {
 
 // egtree construction
 void build(EdgeMapType EdgeMap) {
+	printf("EGtree-build start.\n");
 	// init root
 	TreeNode root;
 	root.isleaf = false;
@@ -237,8 +297,12 @@ void build(EdgeMapType EdgeMap) {
 
 		// partition
 		// printf("PARTITIONING...NID=%d...SIZE=%d...", current.tnid, (int)current.nset.size() );
+		int n = 0;
+		n++;
 		presult = graph_partition(current.nset);
-		// printf("COMPLETE.\n");
+		//printf("graph_part.\n");
+// test---
+		
 
 		// construct child node set
 		for (int i = 0; i < PARTITION_PART; i++) {
@@ -248,6 +312,7 @@ void build(EdgeMapType EdgeMap) {
 		// put the nodes into corresponding sub-partition(slot)
 		for (set<int>::iterator it = current.nset.begin(); it != current.nset.end(); it++) {
 			slot = presult[*it];
+			//printf("EGtree-slot %d\n",slot);
 			childset[slot].insert(*it);
 		}
 
@@ -291,6 +356,7 @@ void build(EdgeMapType EdgeMap) {
 		}
 
 	}
+	printf("EGtree-build end.\n");
 
 }
 
@@ -358,8 +424,8 @@ void egtree_load(const char* filename, vector<TreeNode>& EGTree) {
 	// FILE_GTREE
 	printf("loading egtreeFile\n");
 	FILE *fin = fopen(filename, "rb");
-	int *buf = new int[Nodes.size()];
-	float *buff = new float[Nodes.size()];
+	int *buf = new int[NodeNum];
+	float *buff = new float[NodeNum];
 	int count_borders, count_children, count_leafnodes;
 	bool isleaf;
 	int father;
@@ -505,14 +571,15 @@ bool sortBySize(const unsigned long long& left, const unsigned long long& right)
 	return l.count() < r.count();
 }
 
-void handleCovKwd(int tn, set<unsigned long long> nodecoverkwds) {
+void handleCovKwd(int tn, vector<unsigned long long> nodecoverkwds) {
 	
 	// first handle kwd
-	set<unsigned long long> temp(nodecoverkwds);
-	//sort(temp.begin(), temp.end(), sortBySize);
+	vector<unsigned long long> temp(nodecoverkwds);
+	
+	sort(temp.begin(), temp.end(), sortBySize);
 
-	set<unsigned long long>::iterator iti = temp.begin();
-	set<unsigned long long>::iterator itj;
+	vector<unsigned long long>::iterator iti = temp.begin();
+	vector<unsigned long long>::iterator itj;
 	// 首先删除被包含的关键字
 	for (; iti != temp.end();) {
 		unsigned long long ki = *iti;
@@ -531,9 +598,9 @@ void handleCovKwd(int tn, set<unsigned long long> nodecoverkwds) {
 	// 迭代合并关键字	
 	while (temp.size() > covThre) {
 		// 第一步合并重叠最多的关键字
-		//sort(temp.begin(), temp.end(), sortBySize);
-		set<unsigned long long>::iterator unioni;
-		set<unsigned long long>::iterator unionj;
+		sort(temp.begin(), temp.end(), sortBySize);
+		vector<unsigned long long>::iterator unioni;
+		vector<unsigned long long>::iterator unionj;
 		int max = 0;
 		unsigned long long intesect;
 		unsigned long long maxunion;
@@ -570,13 +637,13 @@ void handleCovKwd(int tn, set<unsigned long long> nodecoverkwds) {
 				iti++;
 			}
 		}
-		temp.insert(maxunion);
+		temp.push_back(maxunion);
 	}
 	
 	//------------------------注意，这里面很可能会有问题，访问同时删除---------------------
 	
 	// 保存kwd信息
-	set<unsigned long long>::iterator itKwd = temp.begin();
+	vector<unsigned long long>::iterator itKwd = temp.begin();
 	for (; itKwd != temp.end(); itKwd++) {
 		EGTree[tn].coverkwds.insert(*itKwd);
 	}	
@@ -586,6 +653,7 @@ void handleCovKwd(int tn, set<unsigned long long> nodecoverkwds) {
 // calculate the distance matrix
 void hierarchy_shortest_path_calculation() {
 	// level traversal
+	printf("EGtree-hier start.\n");
 	vector< vector<int> > treenodelevel;
 
 	vector<int> current; // record all the treenodes in current level 
@@ -605,7 +673,7 @@ void hierarchy_shortest_path_calculation() {
 		if (current.size() == 0) break;
 		treenodelevel.push_back(current);
 	}
-
+	printf("EGtree-hier-bottom-up calculation start.\n");
 	// bottom up calculation
 	// temp graph
 	vector<Node> graph;
@@ -618,7 +686,7 @@ void hierarchy_shortest_path_calculation() {
 	int s, t, tn, nid, cid, weight;
 	vector<int> tnodes, tweight;
 	set<int> nset;
-	set<unsigned long long> nodecoverkwds; // 关键系信息等该节点访问完后统一处理
+	vector<unsigned long long> nodecoverkwds; // 关键系信息等该节点访问完后统一处理
 
 	for (int i = treenodelevel.size() - 1; i >= 0; i--) {
 		for (int j = 0; j < treenodelevel[i].size(); j++) {
@@ -628,11 +696,11 @@ void hierarchy_shortest_path_calculation() {
 			nodecoverkwds.clear();
 			cands.clear();
 			vertex_pairs.clear();
-
+			printf("EGtree-node %d.\n",tn);
 			if (EGTree[tn].isleaf) {
 				//sort lefenodes and union_borders
-				//std::sort(EGTree[tn].leafnodes.begin(), EGTree[tn].leafnodes.end(), less<int>());
-				//std::sort(EGTree[tn].borders.begin(), EGTree[tn].borders.end(), less<int>());
+				sort(EGTree[tn].leafnodes.begin(), EGTree[tn].leafnodes.end(), less<int>());
+				sort(EGTree[tn].borders.begin(), EGTree[tn].borders.end(), less<int>());
 				// cands = leafnodes
 				cands = EGTree[tn].leafnodes;
 				EGTree[tn].union_borders = EGTree[tn].borders;
@@ -652,29 +720,34 @@ void hierarchy_shortest_path_calculation() {
 				}
 
 				//---------------extend for EGTD Algorithm-----------------
-				int keyID;
+				__int64 keyID;
 				for (int k = 0; k < EGTree[tn].leafnodes.size(); k++) {
 					// for each leafnode we handle each adjacent edge of it
-					int nodei = EGTree[tn].leafnodes[k];
+					int nodein = EGTree[tn].leafnodes[k];
+					__int64 nodei = nodein;
 					int adjSize = Nodes[nodei].adjnodes.size();
 					for (int p = 0; p < adjSize; p++) {
-						int nodej = Nodes[nodei].adjnodes[p];
+						int nodejn = Nodes[nodei].adjnodes[p];
+						__int64 nodej = nodejn;
 						keyID = getKey(nodei, nodej);
 
 						edge *e = EdgeMap[keyID];
-						vector<InerNode> inode = e->pts;
+						int n = e->pts.size();
+						int m = n;
+						vector<InerNode>::iterator inode = e->pts.begin();
 						// handle unionkwds
 						EGTree[tn].unionkwds = EGTree[tn].unionkwds | e->sumkwds;
 						// handle coverkwds
-						for (int b = 0; b < inode.size(); b++) {
-							InerNode tempN = inode[b];			
-							if (nodecoverkwds.find(tempN.vct)==nodecoverkwds.end()) {
-								nodecoverkwds.insert(tempN.vct);
+						for (; inode != e->pts.end(); inode++) {
+							InerNode tempN = *inode;
+							if (find(nodecoverkwds.begin(), nodecoverkwds.end(), tempN.vct) == nodecoverkwds.end()) {
+								nodecoverkwds.push_back(tempN.vct);
 							}
 						}
+						
 					}
 					// 统一处理所有的InterNode信息
-					handleCovKwd(tn, nodecoverkwds);
+					//handleCovKwd(tn, nodecoverkwds);
 				}
 			}
 			else {
@@ -690,8 +763,8 @@ void hierarchy_shortest_path_calculation() {
 						set<unsigned long long> ::iterator unionk = EGTree[cid].coverkwds.begin();
 						for (; unionk != EGTree[cid].coverkwds.end(); unionk++) {
 							unsigned long long kwd = *unionk;
-							if (nodecoverkwds.find(kwd) == nodecoverkwds.end()) {
-								nodecoverkwds.insert(kwd);
+							if (find(nodecoverkwds.begin(), nodecoverkwds.end(), kwd) == nodecoverkwds.end()) {
+								nodecoverkwds.push_back(kwd);
 							}
 						}
 						
@@ -703,14 +776,14 @@ void hierarchy_shortest_path_calculation() {
 						set<unsigned long long> ::iterator unionk = EGTree[cid].coverkwds.begin();
 						for (; unionk != EGTree[cid].coverkwds.end(); unionk++) {
 							unsigned long long kwd = *unionk;
-							if (nodecoverkwds.find(kwd) == nodecoverkwds.end()) {
-								nodecoverkwds.insert(kwd);
-							}					
+							if (find(nodecoverkwds.begin(), nodecoverkwds.end(), kwd) == nodecoverkwds.end()) {
+								nodecoverkwds.push_back(kwd);
+							}
 						}
 					}
 				}
 				//---------------extend for EGTD---------------
-				handleCovKwd(tn, nodecoverkwds);
+				//handleCovKwd(tn, nodecoverkwds);
 
 				cands.clear();
 				for (set<int>::iterator it = nset.begin(); it != nset.end(); it++) {
@@ -718,8 +791,8 @@ void hierarchy_shortest_path_calculation() {
 				}
 				EGTree[tn].union_borders = cands;
 				//sort lefenodes and union_borders
-				//std::sort(EGTree[tn].union_borders.begin(), EGTree[tn].union_borders.end(), less<int>());
-				//std::sort(cands.begin(), cands.end(), less<int>());
+				sort(EGTree[tn].union_borders.begin(), EGTree[tn].union_borders.end(), less<int>());
+				sort(cands.begin(), cands.end(), less<int>());
 
 				//------------------------record the mind information			
 				// for each border, do min dis
@@ -736,7 +809,7 @@ void hierarchy_shortest_path_calculation() {
 							EGTree[tn].mind.push_back(result[p]);
 						}						
 						vertex_pairs[EGTree[tn].union_borders[k]][cands[p]] = result[p];
-						vertex_pairs[EGTree[tn].union_borders[p]][cands[k]] = result[p];
+						//vertex_pairs[EGTree[tn].union_borders[p]][cands[k]] = result[p];
 					}
 				}
 			}			
@@ -756,7 +829,6 @@ void hierarchy_shortest_path_calculation() {
 						// only leave those useful
 						tnodes.push_back(nid);
 						tweight.push_back(weight);
-
 					}
 				}
 				// cut it
@@ -775,15 +847,17 @@ void hierarchy_shortest_path_calculation() {
 			}
 		}
 	}
+	printf("EGtree-hier end.\n");
 }
 
 int mainEgtree(int nOfNode, EdgeMapType EdgeMap) { 
 	// initiate the input and gtree parameters	
+	printf("init.\n");
 	init(nOfNode, EdgeMap);
-
+	printf("build.\n");
 	// egtree_build
 	build(EdgeMap);
-
+	printf("hier.\n");
 	// hierarchy_build the distance matrix
 	hierarchy_shortest_path_calculation();
 	return 0;

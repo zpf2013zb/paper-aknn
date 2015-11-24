@@ -10,10 +10,10 @@
 using namespace std;
 // handle
 #define MAX_DIST 9999999
-int MAX_KEYWORDS = 64;
+#define MAX_KEYWORDS 64
 
-int NodeNum;
-int EdgeNum;
+extern int NodeNum;
+extern int EdgeNum;
 
 // define the query point
 struct roadParameter {
@@ -34,6 +34,7 @@ struct Query {
 	vector<QueryPoint> querypts;
 };
 
+/*
 ostream& operator<<(ostream& os, Query& Q)
 {
 	os << bitset<64>(Q.keywords).to_string() << " "<< Q.k;
@@ -74,7 +75,7 @@ ostream& operator<<(ostream& os, const POI& poi)
 
 	return os;
 }
-
+*/
 struct DStepEvent
 {
     double dist;
@@ -118,26 +119,29 @@ struct edge
 	//float dLB,dUB;		// for gendata use only
 };
 
-typedef map<int,edge*> EdgeMapType; // map node to edges
+typedef map<__int64,edge*> EdgeMapType; // map node to edges
 
 // build AdjList on fly
-FastArray<int>* AdjList;
-FastArray<point> PtList;
-EdgeMapType EdgeMap;	// key: i0*NodeNum+j0
+extern FastArray<int>* AdjList;
+extern FastArray<point> PtList;
+extern EdgeMapType EdgeMap;	// key: i0*NodeNum+j0
 
 // get the key of edge
-inline int getKey(int i,int j)
+inline __int64 getKey(__int64 i, __int64 j)
 {
-    int i0=i<j?i:j,j0=j<i?i:j;	// be careful of the order in other places
-    return (i0*NodeNum+j0); // map this edge to unique key
+	__int64 i0=i<j?i:j,j0=j<i?i:j;	// be careful of the order in other places
+	//unsigned int key = (i0*NodeNum + j0);
+	__int64 key = (i0*NodeNum + j0);
+    return key; // map this edge to unique key
 }
 // break the index of key of edge
-inline void breakKey(int key,int& Ni,int& Nj)
+inline void breakKey(__int64 key,int& Ni,int& Nj)
 {
     Ni=key/NodeNum;
     Nj=key%NodeNum;
 }
 
+/*
 void printEdgeKeys()
 {
     int Ni,Nj;
@@ -151,7 +155,7 @@ void printEdgeKeys()
         p++;
     }
 }
-
+*/
 #endif // __NET_SHARED
 
 

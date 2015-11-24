@@ -2,22 +2,14 @@
 #define _GDATA_H_
 
 #include "btree.h"
-#include "utility.h"
 #include "netshare.h"
-#include "ConfigType.h"
-#include "egtree.h"
-#include "KeywordsGenerator.h"
 #include <random>
 #include<algorithm>
 #include <bitset>
 #include <vector>
 #include<stdio.h>
-
-
-
+using namespace std;
 //------------
-//vector <TreeNode> EGTree;
-
 BTree* initialize(char *treename);
 void addentry(BTree *bt, int *top_level, int capacity, int level, int key, int *block_id, int RawAddr);
 void finalize(BTree* bt);

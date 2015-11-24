@@ -16,15 +16,26 @@ using namespace std;
 #define EGTD 1
 #define EGETD 2
 #define INFINITE_MAX 100000000.0
-
-
+#define MAX_KEYWORDN 64 
 // define the query path
-string basepath = "..\\dataset\\";
+string basepath = "..\\dataset";
 
 int nOfPageAccessed = 0;
 int nOfEdgeExpended = 0;
 int algorithmId;
 
+
+int BlkLen;
+int i_capacity;
+
+int NodeNum;
+int EdgeNum;
+FastArray<int>* AdjList;
+FastArray<point> PtList;
+EdgeMapType EdgeMap;	// key: i0*NodeNum+j0
+
+FILE *PtFile, *AdjFile;
+BTree *PtTree;
 
 int poicnt = 0;
 Query Q;
@@ -34,7 +45,6 @@ struct result {
 	float distance;
 };
 result rs;
-
 
 struct PartAddr {
 	int part;
@@ -54,8 +64,8 @@ struct edgeStatu {
 	float sum;
 	vector<float> qTbdist;
 };
-map<int, edgeStatu> edgevisited; // edgeID, isVisited
-vector<int> queryedge;
+map<__int64, edgeStatu> edgevisited; // edgeID, isVisited
+vector<__int64> queryedge;
 
 // priority queue
 struct pnode {
@@ -94,25 +104,68 @@ typedef	priority_queue<pvertex, vector<pvertex>, vcomparator> pvertexPQ;
 
 int getAdjListGrpAddr(int NodeID)  	// using AdjFile
 {
+	int addr = paID[NodeID].addr;
 	return paID[NodeID].addr;
 }
-
-void partAddrLoad(const char* filename, map<int, PartAddr> &partID) {
+/*
+int partAddrLoad(const char* filename, map<int, PartAddr> &partID) {
 
 	printf("loading partAddrFile\n");
 	FILE *paFile;
 	paFile = fopen(filename, "r+");
 	CheckFile(paFile, filename);
-	int nOfNode, nodeID;
+	int nOfNode;
 	fread(&nOfNode, sizeof(int), 1, paFile);
+	//int loop = 0;
 	for (int i = 0; i<nOfNode; i++) {
+		int nodeID;
 		PartAddr pa;
+		int pt, addr;
 		fread(&nodeID, sizeof(int), 1, paFile);
-		fread(&pa.part, sizeof(int), 1, paFile);
-		fread(&pa.addr, sizeof(int), 1, paFile);
+		fread(&pt, sizeof(int), 1, paFile);
+		fread(&addr, sizeof(int), 1, paFile);
+		pa.addr = addr;
+		pa.part = pt;
 		partID[nodeID] = pa;
+		printf("i:%d, nodeid:%d, part:%d, addr:%d\n", i, nodeID, pa.part, pa.addr);
 	}
 	fclose(paFile);
+	return nOfNode;
+}
+*/
+
+int partAddrLoad(const char* filename, map<int, PartAddr> &partID) {
+
+	printf("loading partAddrFile\n");
+	//FILE *paFile;
+	//paFile = fopen(filename, "r+");
+	//CheckFile(paFile, filename);
+	int nOfNode;
+	//fread(&nOfNode, sizeof(int), 1, paFile);
+	//int loop = 0;
+	ifstream paFile(filename);
+	string line;
+	int loop = 0;
+	while (!paFile.eof())
+	{
+		getline(paFile, line);
+		//cout << loop++ << endl;
+		if (line == "")
+			continue;
+		int nid, part, addr; 
+		istringstream iss(line);
+		// --M-- read the unrelevant coordinates inf
+		iss >> nid >> part >> addr;
+		PartAddr pa;
+		pa.addr = addr;
+		pa.part = part;
+		partID[nid] = pa;
+		loop++;
+		printf("i:%d, nodeid:%d, part:%d, addr:%d\n", loop, nid, pa.part, pa.addr);
+	}
+	nOfNode = partID.size();
+	paFile.close();
+	return nOfNode;
 }
 
 void comQueryPath(Query Q, vector<TreeNode> &EGT) {
@@ -176,9 +229,10 @@ void comQueryPath(Query Q, vector<TreeNode> &EGT) {
 			nodePath[pid] = bdis;
 		}
 
-		queryPath[i] = nodePath;
+		queryPath.push_back(nodePath);
 		i++;
 	}
+	int f = 0;
 }
 
 
@@ -187,11 +241,16 @@ void initialQuery(string fileprefix) {
 	nOfEdgeExpended = 0;
 	char tmpFileName[255];
 	// load egtree
-	sprintf(tmpFileName, "%s\\egtree", fileprefix);
-	egtree_load(tmpFileName, EGT);
+	string name;
+	name.clear();
+	name = fileprefix + "\\egtree";
+	//sprintf(tmpFileName, "%s\\egtree", fileprefix);
+	egtree_load(name.c_str(), EGT);
 	// load partAddr
-	sprintf(tmpFileName, "%s\\partAddr", fileprefix);
-	partAddrLoad(tmpFileName, paID);
+	name.clear();
+	name = fileprefix + "\\partAddr";
+	//sprintf(tmpFileName, "%s\\partAddr", fileprefix);
+	//partAddrLoad(name.c_str(), paID);
 	comQueryPath(Q, EGT);
 }
 
@@ -288,12 +347,12 @@ void EGTDA( ) {
 	// 初始化结果
 	rs.distance = INFINITE_MAX;
 	rs.poid = -1;
-
+	edgevisited.clear();
 	// step1 将根节点压入到优先队列中
-	pnode pn;
-	pn.dist = 0;
-	pn.nodeID = 0;
-	pq.push(pn);
+	pnode pni;
+	pni.dist = 0;
+	pni.nodeID = 0;
+	pq.push(pni);
 
 	// step2 while循环，弹出当前最优的节点并展开
 	while (!pq.empty()) {
@@ -302,6 +361,8 @@ void EGTDA( ) {
 		pq.pop();
 		// if n没被过滤 Case1：叶子节点； Case2：中间节点
 		int nid = node.nodeID;
+		
+		printf("nodeid is:%d\n", nid);
 		if ((node.dist < rs.distance) && (EGT[nid].unionkwds&Q.keywords) == Q.keywords) {
 			// Case1: 叶子节点
 			if (EGT[nid].isleaf) {
@@ -310,23 +371,27 @@ void EGTDA( ) {
 				vector<pvertex> pv;
 				for (int i = 0; i < Q.k; i++) {
 					// 两种情况，case1：当前该查询点在该节点中，调用Dijkstra;case2:不在，直接相加
+					printf("The nid is:%d, q num is:%d\n", nid, i);
 					map<int, vector<float>>::iterator it = queryPath[i].find(nid);
 					vector<float> result;
-					if (it != queryPath[i].end()) { // 调用Dijkstra算法
+					if (it != queryPath[i].end()) { // 在里面，调用Dijkstra算法
 						// note the corresponding relationship between result and leafnodes
 						result = dijkstra_candidate(Q.querypts[i], EGT[nid].leafnodes);
 
 						for (int l = 0; l < EGT[nid].leafnodes.size(); l++) {
 							if (i == 0) {
 								pvertex pt;
-								pt.vertexID = EGT[nid].leafnodes[l];
+								vector<float> vf(Q.k, 0);
+								pt.vdist = vf;
 
+								pt.vertexID = EGT[nid].leafnodes[l];
+								//pt.vdist.push_back(result[l]);
 								pt.vdist[i] = result[l];
 								pt.sumDist = result[l];
-								pv[l] = pt;
+								pv.push_back(pt);
 							}
 							else {
-								pv[l].vdist[i] = result[l];
+								pv[l].vdist[i] = result[l];								
 								pv[l].sumDist += result[l];
 							}
 						}
@@ -336,6 +401,8 @@ void EGTDA( ) {
 						for (int l = 0; l < EGT[nid].leafnodes.size(); l++) {
 							if (i == 0) {
 								pvertex pt;
+								vector<float> vf(Q.k, 0);
+								pt.vdist = vf;
 								pt.vertexID = EGT[nid].leafnodes[l];
 
 								int dist;
@@ -346,9 +413,9 @@ void EGTDA( ) {
 									if (dist < min) min = dist;
 								}
 								// 可能有问题，vdist未初始化
-								pt.vdist[i] = min;
+								pt.vdist[i] = min; 
 								pt.sumDist = min;
-								pv[l] = pt;
+								pv.push_back(pt);
 							}
 							else {
 								// 计算到q-border-vertex的距离
@@ -360,7 +427,7 @@ void EGTDA( ) {
 									if (dist < min) min = dist;
 								}
 								// 可能有问题，vdist未初始化
-								pv[l].vdist[i] = min;
+								pv[l].vdist[i] = min; 
 								pv[l].sumDist += min;
 							}
 						}
@@ -370,26 +437,30 @@ void EGTDA( ) {
 				// 进一步优化在这里************
 				// 处理每一个vertex相邻的边，看上面是否有满足条件的POI 
 				for (int t = 0; t < pv.size(); t++) {
+					printf("loop %d to num %d\n", t, pv.size());
 					pvertex pt = pv[t];
 					int vid = pt.vertexID;
-
+					__int64 vide = vid;
 					AdjGrpAddr = getAdjListGrpAddr(vid);
 					getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);
 					for (int n = 0; n < AdjListSize; n++) {
 						getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, n);
-						int edge = getKey(vid, NewNodeID);
+						getVarE(DIST_A, Ref(EdgeDist), AdjGrpAddr, n);
+						getVarE(SUMKWD_A, &sumkwd, AdjGrpAddr, n);
+						__int64 NewNodeIDe = NewNodeID;
+						__int64 edge = getKey(vide, NewNodeIDe);
 						// bool isonedge;
 						
-						map<int, edgeStatu>::iterator it = edgevisited.find(edge);
+						map<__int64, edgeStatu>::iterator it = edgevisited.find(edge);
 						edgeStatu es;
 						if (it != edgevisited.end()) {
 							if (edgevisited[edge].isVisited == 0) { //处理一下
 								getVarE(PTKEY_A, Ref(PtGrpKey), AdjGrpAddr, n);
 								if (PtGrpKey == -1) {
-									//cout<<"No POI existed on Edge where Q located."<<endl;
+									cout<<"No POI existed on Edge where Q located."<<endl;
 								}
 								else {
-									getVarE(DIST_A, Ref(EdgeDist), AdjGrpAddr, n);
+									//getVarE(DIST_A, Ref(EdgeDist), AdjGrpAddr, n);
 									getFixedF(SIZE_P, Ref(PtNumOnEdge), PtGrpKey);
 									//Notice the order POI visitedNode on edge
 									unsigned long long pkwd;
@@ -406,7 +477,8 @@ void EGTDA( ) {
 											float sum = 0;
 											for (int f = 0; f < Q.k; f++) {
 												// two case:1,q on this edge; 2: q not on this edge
-												if (find(queryedge.begin(), queryedge.end(), edge) != queryedge.end()) { // on edge
+												//if (find(queryedge.begin(), queryedge.end(), edge) != queryedge.end()) { // on edge
+												if (queryedge[f] == edge) { // on edge
 													float dis = 0;
 													dis = fabsf(PtDist - Q.querypts[f].dist_Ni);
 													sum += dis;
@@ -426,7 +498,7 @@ void EGTDA( ) {
 												if (disi > disj) disi = disj;
 												sum = sum + disi;
 											}
-
+											// have computed the distance between each points to query:sum
 											if (sum < rs.distance) {
 												rs.distance = sum;
 												rs.poid = pid;
@@ -441,7 +513,7 @@ void EGTDA( ) {
 							edgevisited.erase(it);
 						}
 						else { // 该条边未访问过
-							getVarE(SUMKWD_A, &sumkwd, AdjGrpAddr, n);
+							
 							if ((sumkwd&Q.keywords) != Q.keywords) {
 								es.isVisited = 1;
 								edgevisited[edge] = es;
@@ -466,32 +538,44 @@ void EGTDA( ) {
 			else {
 				// 拓展该节点，并计算满足条件(关键字和距离)的孩子节点的距离并压入队列
 				// 处理每一个孩子节点
+				vector<pnode> childnode;
+				childnode.clear();
+
 				for (int i = 0; i < Q.k; i++) { 
 					// 按照查询路径来处理，处理每个查询点
 					for (int j = 0; j < EGT[nid].children.size(); j++) {
 						// two cases. 1: q in the node; 2: not in the node
 						int cid = EGT[nid].children[j];
-						pnode pn;
-						pn.nodeID = cid;
-						pn.dist = 0;
-
+											
+						if (i == 0) {
+							pnode pn;
+							pn.nodeID = cid;
+							pn.dist = 0;
+							for (int f = 0; f < EGT[cid].borders.size(); f++) {
+								vector<float> vf(Q.k, 0);
+								pn.bdist.push_back(vf);
+							}
+							childnode.push_back(pn);
+						}
+			
 						map<int, vector<float>>::iterator it = queryPath[i].find(cid);
 						if (it != queryPath[i].end()) { // do nothing
-							// wrong!!!!!!!!! vector不能这么赋值
-							for (int t = 0; t < EGT[cid].borders.size(); t++) {
-								pn.bdist[t].push_back(0);
-							}
-							//pn.bdist[j] = 0;
+							continue;						
 						}
 						else { // compute the distance
 							   // first determine the father node in the layer of cid
 							int sid;
+							bool flag = false;
 							for (int l = 0; l < EGT[nid].children.size(); l++) {
 								sid = EGT[nid].children[l];
 								map<int, vector<float>>::iterator sit = queryPath[i].find(sid);
 								if (sit != queryPath[i].end()) { // return this id
+									flag = true;
 									break;
 								}
+							}
+							if (!flag) {
+								sid = nid;
 							}
 							// then compute the distance from nid
 							float mind = INFINITE_MAX;
@@ -514,99 +598,125 @@ void EGTDA( ) {
 										index = ((posj + 1)*posj) / 2 + posi;
 										dist = EGT[nid].mind[index];
 									}
-									map<int, vector<float>>::iterator nodeDist = queryPath[i].find(sid);
-									dist = dist + nodeDist->second[t];
+									if (flag) { // 
+										map<int, vector<float>>::iterator nodeDist = queryPath[i].find(sid);
+										dist = dist + nodeDist->second[t];
+									}
+									else {
+										float distance = node.bdist[t][i];
+										dist = dist + distance;
+									}
+									
 									if (dist < min) min = dist;
 								}
 								if (min < mind) mind = min;
 								// if is the first then initiate it
+								childnode[j].bdist[k][i] = min;
+								/*
 								if (i == 0) {
-									vector<float> qTb;
+									vector<float> qTb(Q.k,0);
 									// wrong!!!!!!!!!
-									qTb.push_back(min);
+									qTb[i] = min;
+									//pn.dist = min;
 									pn.bdist.push_back(qTb);
 								}
 								else {
 									// wrong!!!!!!!!!
-									pn.bdist[k].push_back(min);
+									//pn.dist = pn.dist + min;
+									pn.bdist[k][i] = min;
 								}
+								*/
 
 							}
-							pn.dist = pn.dist + mind;
-							pq.push(pn);
+							childnode[j].dist = childnode[j].dist + mind;
+							//pq.push(pn);
 						}
 					}
 				}
-
+				int size = childnode.size();
+				for (int loop = 0; loop < size; loop++) {
+					pq.push(childnode[loop]);
+				}
 			}
 		}
 
 	}
 
 	// step3 处理half
-	map<int, edgeStatu> ::iterator it = edgevisited.begin();
+	map<__int64, edgeStatu> ::iterator it = edgevisited.begin();
 	for (; it != edgevisited.end(); it++) {
 		edgeStatu es = it->second;
-		if (es.sum < rs.distance) {
-			int vid, vjd;
-			int first = it->first;
-			breakKey(first, vid, vjd);
-			if (vid != es.vi) {
-				int temp = vid;
-				vid = vjd;
-				vjd = temp;
+		// 可能在边上
+		__int64 edgeid = it->first;
+		vector<__int64> ::iterator itr = find(queryedge.begin(), queryedge.end(), edgeid);
+		if ((itr == queryedge.end()) && (es.sum >= rs.distance)) continue;	
+
+		//__int64 vide, vjde;
+		__int64 firste = it->first;
+		int vid, vjd;
+		breakKey(firste, vid, vjd);
+		if (vid != es.vi) {
+			int temp = vid;
+			vid = vjd;
+			vjd = temp;
+		}
+		// 可以优化在这里***********
+		AdjGrpAddr = getAdjListGrpAddr(vid);
+		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);
+		for (int n = 0; n < AdjListSize; n++) {
+			getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, n);
+			if (NewNodeID != vjd) continue;
+			getVarE(DIST_A, Ref(EdgeDist), AdjGrpAddr, n);
+			//记录查询边距离
+			getVarE(PTKEY_A, Ref(PtGrpKey), AdjGrpAddr, n);
+			if (PtGrpKey == -1) {
+				//cout<<"No POI existed on Edge where Q located."<<endl;
 			}
-			// 可以优化在这里***********
-			AdjGrpAddr = getAdjListGrpAddr(vid);
-			getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);
-			for (int n = 0; n < AdjListSize; n++) {
-				getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, n);
-				if (NewNodeID != vjd) continue;
-				getVarE(DIST_A, Ref(EdgeDist), AdjGrpAddr, n);
-				//记录查询边距离
-				getVarE(PTKEY_A, Ref(PtGrpKey), AdjGrpAddr, n);
-				if (PtGrpKey == -1) {
-					//cout<<"No POI existed on Edge where Q located."<<endl;
-				}
-				else {
-					getFixedF(SIZE_P, Ref(PtNumOnEdge), PtGrpKey);
-					//cout<<" PtNum on Edge where Q located:"<<PtNumOnEdge<<endl;
-					//Notice the order POI visitedNode on edge
-					unsigned long long pkwd;
-					int pid;
-					for (int j = 0; j < PtNumOnEdge; j++) {
-						//poicnt++;
-						getVarE(PT_DIST, Ref(PtDist), PtGrpKey, j);
-						getVarE(PT_KWD, &pkwd, PtGrpKey, j);
-						getVarE(PT_P, &pid, PtGrpKey, j);
-						if ((pkwd&Q.keywords) != Q.keywords) {
-							continue;
-						}
-						else {
-
-							float sum = es.sum;
+			else {
+				getFixedF(SIZE_P, Ref(PtNumOnEdge), PtGrpKey);
+				//cout<<" PtNum on Edge where Q located:"<<PtNumOnEdge<<endl;
+				//Notice the order POI visitedNode on edge
+				unsigned long long pkwd;
+				int pid;
+				for (int j = 0; j < PtNumOnEdge; j++) {
+					//poicnt++;
+					getVarE(PT_DIST, Ref(PtDist), PtGrpKey, j);
+					getVarE(PT_KWD, &pkwd, PtGrpKey, j);
+					getVarE(PT_P, &pid, PtGrpKey, j);
+					if ((pkwd&Q.keywords) != Q.keywords) {
+						continue;
+					}
+					else {
+						float sum = 0;
+						for (int f = 0; f < Q.k; f++) {
+							// two case:1,q on this edge; 2: q not on this edge
+							if (queryedge[f] == edgeid) { // on edge
+								float dis = 0;
+								dis = fabsf(PtDist - Q.querypts[f].dist_Ni);
+								sum += dis;
+								continue;
+							}
+							float dis;
 							if (vid < vjd) {
-								float dis = PtDist;
-								sum = sum + Q.k*dis;
+								dis = PtDist;
+								//sum = sum + Q.k*dis;
 							}
 							else {
-								float dis = EdgeDist - PtDist;
-								sum = sum + Q.k*dis;
+								dis = EdgeDist - PtDist;
+								//sum = sum + Q.k*dis;
 							}
-
-							if (sum < rs.distance) {
-								rs.distance = sum;
-								rs.poid = pid;
-							}
-							else {
-								// 后面的距离更大
-								break;
-							}
+							sum = sum + es.qTbdist[f] + dis;								
 						}
+						if (sum < rs.distance) {
+							rs.distance = sum;
+							rs.poid = pid;
+						}
+
 					}
 				}
 			}
 		}
+		
 
 	}
 }
@@ -624,17 +734,18 @@ void queryAlgorithm(string fileprefix) {
 	EGTDA();
 	finish = clock();
 	cout << "EGTDA:" << (finish - start) / CLOCKS_PER_SEC << endl;
-
+	/*
 	start = clock();
 	EGETDA();
 	finish = clock();
 	cout << "EGETDA:" << (finish - start) / CLOCKS_PER_SEC << endl;
+	*/
 }
 
-int k = 30;
-int qk = 6;
+int k = 7;
+int qk = 3;
 int np = 7;
-int nOfTest = 20;
+int nOfTest = 1;
 struct querycand {
 	int nodei;
 	int nodej;
@@ -644,8 +755,16 @@ struct querycand {
 map<int, querycand>  qc;
 
 void geneQuery(string prxfilename) {
+	string name;
+	name.clear();
+
+	name = prxfilename + "\\partAddr";
+	//sprintf(tmpFileName, "%s\\partAddr", fileprefix);
+	NodeNum = partAddrLoad(name.c_str(), paID);
+	//NodeNum = paID.size();
 	// read info from java transform file, 
 	// format: edgeid nodei nodej length
+
 	string inFile = prxfilename + "\\candquery";
 	string outFile = prxfilename + "\\queryfile";
 
@@ -675,10 +794,10 @@ void geneQuery(string prxfilename) {
 	// generate Q.keywords
 	int l = 0;
 	while (l < nOfTest) {
-		bitset<MAX_KEYWORDS> keywords_set;
+		bitset<MAX_KEYWORDN> keywords_set;
 		keywords_set.reset();
 		while (keywords_set.count() != qk) {
-			int position = rand() % MAX_KEYWORDS;
+			int position = rand() % MAX_KEYWORDN;
 			keywords_set.set(position);
 		}
 		unsigned long long kwd = keywords_set.to_ullong();
@@ -709,11 +828,42 @@ void geneQuery(string prxfilename) {
 int main(int argc, char *argv[]) {
 
 	string dataFilename = basepath;
-	/*
+	
 	// set the query:read info from query file, 
 	// format: keywords k, nodei nodej lenght dis, ...
 	string inFile = dataFilename + "\\queryfile";
 
+	// generate index
+	/*
+	roadParameter rp;
+	rp.avgNKwd = 7;
+	rp.avgNPt = 7;
+	cout << 1 << endl;
+	mainGenData(dataFilename, rp);
+	//*/
+
+	// generate query
+	//geneQuery(dataFilename);
+	///*
+	// perform the query
+	geneQuery(dataFilename);
+	OpenDiskComm(dataFilename, 200);
+	/*
+	int size; int id;
+	float dis;
+	unsigned long long ull;
+	getFixedF(SIZE_A, Ref(size), 1148);
+	printf("Size is:%d\n", size);
+
+	//ADJNODE_A, DIST_A, SUMKWD_A, PTKEY_A
+	getVarE(SUMKWD_A, Ref(ull), 1148, 0);
+	unsigned long long ull2 = ull; 
+	//printf("ull is:%I64d\n", ull);
+
+	getVarE(ADJNODE_A, Ref(id), 1148, 0);
+	printf("node id is:%d\n", id);
+	*/
+	///*
 	ifstream iFile(inFile.c_str());
 	while (!iFile.eof())
 	{
@@ -731,19 +881,22 @@ int main(int argc, char *argv[]) {
 		for (int i = 0; i < Q.k; i++) {
 			QueryPoint q;
 			iss >> c >> q.Ni >> q.Nj >> q.distEdge >> q.dist_Ni;
-			int key = getKey(q.Ni, q.Nj);
-			queryedge[i] = key;
+			__int64 ni, nj;
+			ni = q.Ni;
+			nj = q.Nj;
+
+			__int64 key = getKey(ni, nj);
+			queryedge.push_back(key);
 			Q.querypts.push_back(q);
 		}
 
 		// start query
 		queryAlgorithm(dataFilename);
 	}
-	*/
-	roadParameter rp;
-	rp.avgNKwd = 7;
-	rp.avgNPt = 7;
-	mainGenData(dataFilename, rp);
-
+	
+	CloseDiskComm();
+	//*/
+	printf("The result distance is: %f\n", rs.distance);
+	printf("The result oid is: %d\n", rs.poid);
 	return 0;
 }

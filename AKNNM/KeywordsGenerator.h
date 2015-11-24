@@ -12,7 +12,6 @@
 #include <iostream>
 #include <random>
 #include <stdlib.h>
-#define MAX_KEYWORDS 64
 
 class KeywordsGenerator
 {

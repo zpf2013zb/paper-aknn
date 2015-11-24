@@ -176,8 +176,6 @@ typedef __int64 int64_t;
 #define METIS_API(type) type
 #endif
 
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -344,7 +342,5 @@ typedef enum {
   METIS_OBJTYPE_VOL,
   METIS_OBJTYPE_NODE
 } mobjtype_et;
-
-
 
 #endif  /* _METIS_H_ */

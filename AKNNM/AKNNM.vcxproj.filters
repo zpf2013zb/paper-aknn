@@ -48,6 +48,9 @@
     <ClInclude Include="gendata.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="metis.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -74,5 +77,11 @@
     <ClCompile Include="utility.cc">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="diskbased.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="..\attachLib\metis.lib" />
   </ItemGroup>
 </Project>

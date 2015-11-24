@@ -206,6 +206,8 @@ CachedBlockFile::CachedBlockFile(char* name,int blength, int csize)
         fuf_cont[i]=free;
         cache[i] = new char[get_blocklength()];
     }
+	int test=0;
+	test++;
 }
 
 CachedBlockFile::~CachedBlockFile()

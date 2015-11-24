@@ -40,7 +40,7 @@ const float FLOAT_MAX=(float)INT_MAX;
 // "InitClock" also initialize the seeds for 2 random generators
 void InitClock();
 void PrintElapsed();
-void CheckFile(FILE* fp,const char* filename);
+void CheckFile(FILE* fp, string filename);
 
 //Modified by Qin Xu
 //#define min(a, b) (((a) < (b))? (a) : (b)  )
