@@ -18,7 +18,7 @@
 #define ATTRIBUTE_DIMENSION 6
 #define SKY_PARTITION 5
 #define edDis 0.5
-#define covThre 10
+#define covThre 50
 #define splitBlock 5
 
 /********************************DataStructure************************************/
@@ -367,9 +367,11 @@ void egtree_save(string filename) {
 	FILE *fout = fopen(filename.c_str(), "wb");
 	int *buf = new int[Nodes.size()];
 	float *buff = new float[Nodes.size()];
-
+	int loop = -1;
 	for (int i = 0; i < EGTree.size(); i++) {
 		// borders
+		printf("The id is %d\n", i);
+		loop++;
 		int count_borders = EGTree[i].borders.size();
 		fwrite(&count_borders, sizeof(int), 1, fout);
 		copy(EGTree[i].borders.begin(), EGTree[i].borders.end(), buf);
@@ -568,7 +570,7 @@ vector<int> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph) {
 bool sortBySize(const unsigned long long& left, const unsigned long long& right) {
 	bitset<MAX_KEYWORDS> l(left);
 	bitset<MAX_KEYWORDS> r(right);
-	return l.count() < r.count();
+	return l.count() > r.count();
 }
 
 void handleCovKwd(int tn, vector<unsigned long long> nodecoverkwds) {
@@ -583,8 +585,9 @@ void handleCovKwd(int tn, vector<unsigned long long> nodecoverkwds) {
 	// 首先删除被包含的关键字
 	for (; iti != temp.end();) {
 		unsigned long long ki = *iti;
-		iti++;
-		for (itj = iti ; itj != temp.end();) {
+		vector<unsigned long long>::iterator it = iti;
+		it++;
+		for (itj = it ; itj != temp.end();) {
 			unsigned long long kj = *itj;
 			if ((ki&kj)==kj) {
 				itj = temp.erase(itj);
@@ -593,6 +596,7 @@ void handleCovKwd(int tn, vector<unsigned long long> nodecoverkwds) {
 				itj++;
 			}
 		}
+		iti++;
 	}
 	
 	// 迭代合并关键字	
@@ -606,10 +610,11 @@ void handleCovKwd(int tn, vector<unsigned long long> nodecoverkwds) {
 		unsigned long long maxunion;
 		for (iti = temp.begin(); iti != temp.end(); ) {
 			unsigned long long ki = *iti;
+			vector<unsigned long long>::iterator it = iti;
 			bitset<MAX_KEYWORDS> l(ki);
 			if (l.count() <= max) break;
-			iti++;
-			for (itj = iti; itj != temp.end();itj++) {
+			it++;
+			for (itj = it; itj != temp.end();itj++) {
 				unsigned long long kj = *itj;
 				bitset<MAX_KEYWORDS> r(kj);
 				if (r.count() <= max) break;
@@ -624,10 +629,11 @@ void handleCovKwd(int tn, vector<unsigned long long> nodecoverkwds) {
 					maxunion = ki | kj;
 				}				
 			}
+			iti++;
 		}
 		// 删除被合并后关键字包含的元素
-		temp.erase(unioni);
-		temp.erase(unionj);
+		//temp.erase(unioni);
+		//temp.erase(unionj);
 		for (iti = temp.begin(); iti != temp.end();) {
 			unsigned long long ki = *iti;
 			if ((maxunion&ki) == ki) {
@@ -697,6 +703,7 @@ void hierarchy_shortest_path_calculation() {
 			cands.clear();
 			vertex_pairs.clear();
 			printf("EGtree-node %d.\n",tn);
+			
 			if (EGTree[tn].isleaf) {
 				//sort lefenodes and union_borders
 				sort(EGTree[tn].leafnodes.begin(), EGTree[tn].leafnodes.end(), less<int>());
@@ -747,7 +754,7 @@ void hierarchy_shortest_path_calculation() {
 						
 					}
 					// 统一处理所有的InterNode信息
-					//handleCovKwd(tn, nodecoverkwds);
+					handleCovKwd(tn, nodecoverkwds);
 				}
 			}
 			else {
@@ -783,7 +790,7 @@ void hierarchy_shortest_path_calculation() {
 					}
 				}
 				//---------------extend for EGTD---------------
-				//handleCovKwd(tn, nodecoverkwds);
+				handleCovKwd(tn, nodecoverkwds);
 
 				cands.clear();
 				for (set<int>::iterator it = nset.begin(); it != nset.end(); it++) {
@@ -860,5 +867,6 @@ int mainEgtree(int nOfNode, EdgeMapType EdgeMap) {
 	printf("hier.\n");
 	// hierarchy_build the distance matrix
 	hierarchy_shortest_path_calculation();
+	//finalize();
 	return 0;
 }

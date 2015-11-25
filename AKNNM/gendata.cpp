@@ -617,9 +617,9 @@ int mainGenData(string prxfilename, roadParameter rp)
 	mainEgtree(NodeNum, EdgeMap);
 	BuildEBinaryStorage(prxfilename);
 	egtree_save(prxfilename+"\\egtree");
-	//finalize();
+	
 
-	ofstream fout(prxfilename + "_Information");
+	ofstream fout(prxfilename + "\\information");
 	fout << "Number of Vertexes:" << NodeNum << endl;
 	fout << "Number of Edges:" << EdgeNum << endl;
 	fout << "Total Keyowords Number:" << num_K << endl;
