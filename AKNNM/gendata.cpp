@@ -144,6 +144,139 @@ struct ComparInerNode
 		return left.dis > right.dis;
 	}
 };
+// for the TDKD2005 paper algorightms TA and CE
+// Pt FlatFile Field:
+//		Header:	Ni(int), Nj(int), dist(float), size(int)
+//		Entry:	vP(float)
+
+bool cmpInternode (const InerNode& left, const InerNode& right) 
+{
+	return left.dis > right.dis;
+}
+
+void makePtFiles(FILE *ptFile, char* treefile) {
+	PtMaxUsing = true;
+	BTree* bt = initialize(treefile);
+	printf("making PtFiles\n");
+
+	int RawAddr = 0, key = 0, size;	// changed
+	int nodesize = 0;
+	int numedge = 0;
+	EdgeMapType::iterator iter = EdgeMap.begin();
+	while (iter != EdgeMap.end()) {
+		edge* e = iter->second;
+		numedge++;
+		if (e->pts.size()>0) {	// do not index empty groups
+			nodesize += e->pts.size();
+			sort(e->pts.begin(), e->pts.end(), cmpInternode);
+			//sort(EGTree[treeNodeID].leafnodes.begin(), EGTree[treeNodeID].leafnodes.end(), less<int>());
+			RawAddr = ftell(ptFile);	// set addr to correct amt.
+			size = e->pts.size();
+			fwrite(&(e->Ni), 1, sizeof(int), ptFile);
+			fwrite(&(e->Nj), 1, sizeof(int), ptFile);
+			fwrite(&(e->dist), 1, sizeof(float), ptFile);
+
+			fwrite(&(size), 1, sizeof(int), ptFile);
+			fwrite(&(e->pts[0]), e->pts.size(), sizeof(InerNode), ptFile); //???????????是不是要修改
+			e->FirstRow = key;
+			PtMaxKey = key + e->pts.size() - 1;	// useful for our special ordering !									//printf("(key,value)=(%d,%d)\n",key,RawAddr);
+
+			addentry(bt, &top_level, i_capacity, 1, key, &num_written_blocks, RawAddr);
+			key += sizeof(int) * 3 + sizeof(float);
+			key += size * sizeof(InerNode); //Modified by Qin Xu
+		}
+		else
+			e->FirstRow = -1;		// also later used by AdjFile
+		iter++;
+	}
+	printf("Build-pt The number of edge is:%d\n", numedge);
+	printf("Build-pt The number of pt is:%d\n", nodesize);
+	finalize(bt);
+	bt->UserField = num_D;
+	delete bt;
+	PtMaxUsing = false;
+}
+
+//int PTGRP_HEADSIZE = 3 * sizeof(int) + sizeof(float);
+//int PTGRP_ITEMSIZE = sizeof(float);
+int HEADSIZE = sizeof(int);
+int ITEMSIZE = 2 * sizeof(int) + sizeof(float) + sizeof(unsigned long long);
+
+void makeAdjListFiles(FILE *alFile) {
+	printf("making alFiles, dependency on makePtFiles\n");
+
+	int key = 0, size, PtSize;
+	fwrite(&NodeNum, 1, sizeof(int), alFile);
+
+	// slotted header info.
+	int addr = sizeof(int) + sizeof(int)*NodeNum;
+	for (int Ni = 0; Ni<NodeNum; Ni++) {
+		fwrite(&addr, 1, sizeof(int), alFile);
+		addr += HEADSIZE + AdjList[Ni].size()*ITEMSIZE;
+	}
+
+	float distsum = 0;
+	for (int Ni = 0; Ni<NodeNum; Ni++) {
+		// write Ni's crd, added at 28/1/2004
+		//fwrite(&(xcrd[Ni]), 1, sizeof(float), alFile);
+		//fwrite(&(ycrd[Ni]), 1, sizeof(float), alFile);
+
+		size = AdjList[Ni].size();
+		fwrite(&(size), 1, sizeof(int), alFile);
+		__int64 nie = Ni;
+		for (int k = 0; k<AdjList[Ni].size(); k++) {
+			int Nk = AdjList[Ni][k];	// Nk can be smaller or greater than Ni !!!
+
+			__int64 nke = Nk;
+			__int64 key = getKey(nie, nke);
+			edge* e = EdgeMap[key];
+			PtSize = e->pts.size();
+
+			fwrite(&Nk, 1, sizeof(int), alFile);
+			fwrite(&(e->dist), 1, sizeof(float), alFile);
+			fwrite(&(e->sumkwds), 1, sizeof(unsigned long long), alFile);
+			fwrite(&(e->FirstRow), 1, sizeof(int), alFile); // use FirstRow for other purpose ... 
+			//printf("(Ni,Nj,dataAddr)=(%d,%d,%d)\n",Ni,Nk,e->FirstRow);
+			distsum += e->dist;
+		}
+		key = Ni;
+	}
+	distsum = distsum / 2;
+	printf("total edge dist: %f\n", distsum);
+}
+
+void BuildBinaryStorage(string fileprefix) {
+	BlkLen = getBlockLength();
+	char tmpFileName[255];
+
+	FILE *ptFile, *edgeFile;
+	string name;
+	name = fileprefix + "\\pfile_tkde";
+	remove(name.c_str()); // remove existing file
+	ptFile = fopen(name.c_str(), "wb+");
+	name.clear();
+	name = fileprefix + "\\pbtree_tkde";
+	//sprintf(tmpFileName,"%s\\pbtree",fileprefix);
+	//remove(tmpFileName); // remove existing file
+	remove(name.c_str()); // remove existing file
+	char* c;
+	int len = name.length();
+	c = new char[len + 1];
+	strcpy(c, name.c_str());
+	makePtFiles(ptFile, c);
+
+	name.clear();
+	name = fileprefix + "\\adjlist_tkde";
+
+	remove(name.c_str()); // remove existing file
+	edgeFile = fopen(name.c_str(), "wb+");
+	makeAdjListFiles(edgeFile);
+
+	// generate reserve the part and address information
+
+	fclose(ptFile);
+	fclose(edgeFile);
+}
 
 //------extend for egtree
 void makeEPtFiles(FILE *ptFile, char* treefile) {
@@ -158,6 +291,7 @@ void makeEPtFiles(FILE *ptFile, char* treefile) {
 	int nodeID = 0;
 	int RawAddr = 0, key = 0, size, PtSize;
 	int numedge = 0;
+	int nodesize = 0;
 	for (; treeNodeID < EGTree.size(); treeNodeID++) {
 		if (!EGTree[treeNodeID].isleaf) continue;
 		// is leaf node ,sort it in ascend order
@@ -180,6 +314,7 @@ void makeEPtFiles(FILE *ptFile, char* treefile) {
 				edge* e = EdgeMap[mapkey];			
 				PtSize = e->pts.size();
 				if (PtSize>0) {
+					nodesize += PtSize;
 					sort(e->pts.begin(), e->pts.end(), ComparInerNode());
 					RawAddr = ftell(ptFile);	// set addr to correct amt.
 					fwrite(&(e->Ni), 1, sizeof(int), ptFile);
@@ -201,7 +336,8 @@ void makeEPtFiles(FILE *ptFile, char* treefile) {
 			}
 		}
 	}
-	printf("Build-pt The number of edge is:%d\n", numedge);
+	printf("Build-EHANCE-pt The number of edge is:%d\n", numedge);
+	printf("Build-EHANCE-pt The number of pt is:%d\n", nodesize);
 	finalize(bt);
 	bt->UserField=num_D;
 	delete bt;
@@ -490,10 +626,12 @@ void GenOutliers(int NumPoint, int avgKeywords)
 }
 
 // For test purpose to check if graph is connected
+//********* this part have been in netshare.h
+/*
 struct StepEvent
 {
-	//float dist;
-	double dist;
+	float dist;
+	//double dist;
 	int node;	// posDist for gendata.cc only
 };
 
@@ -507,6 +645,7 @@ struct StepComparison
 };
 
 typedef	priority_queue<StepEvent, vector<StepEvent>, StepComparison> StepQueue;
+*/
 
 void ConnectedGraphCheck()
 {
@@ -612,6 +751,7 @@ int mainGenData(string prxfilename, roadParameter rp)
 	
 	GenOutliers(EdgeNum*rp.avgNPt, rp.avgNKwd);
 	printf("Avg keyword # per object:%f\n",float(num_K)/num_D);
+	BuildBinaryStorage(prxfilename);
 
 	//--------------------extend for egtree-------------------
 	mainEgtree(NodeNum, EdgeMap);

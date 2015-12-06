@@ -11,8 +11,8 @@ extern int i_capacity;
 char *gBuffer;	// temp, global buffer for atomic use
 FreqCache FC_A, FC_P; // FC for ensureCache exclusive use !
 extern int BlkLen;
+extern int  algorithmId;
 
-int method;
 
 // read the blockID from FC-cache-myfile
 char* getFlatBlock(FILE* myfile, int BlockId)
@@ -165,14 +165,26 @@ void OpenDiskComm(string fileprefix, int _cachesize)
 
 	string name;
 	name.clear();
-	name = fileprefix + "\\pfile";
+	if (algorithmId > 2) {
+		name = fileprefix + "\\pfile_tkde";
+	}
+	else {
+		name = fileprefix + "\\pfile";
+	}
+	//name = fileprefix + "\\pfile";
 	//sprintf(tmpFileName, "%s\\pfile", fileprefix);
 	PtFile = fopen(name.c_str(), "rb");
 	CheckFile(PtFile, name.c_str());
 	PtFileSize = getFileSize(PtFile);
 
 	name.clear();
-	name = fileprefix + "\\pbtree";
+	if (algorithmId > 2) {
+		name = fileprefix + "\\pbtree_tkde";
+	}
+	else {
+		name = fileprefix + "\\pbtree";
+	}
+	//name = fileprefix + "\\pbtree";
 	char* c;
 	int len = name.length();
 	c = new char[len + 1];
@@ -183,7 +195,12 @@ void OpenDiskComm(string fileprefix, int _cachesize)
 	PtNum = PtTree->UserField;
 
 	name.clear();
-	name = fileprefix + "\\adjlist";
+	if (algorithmId > 2) {
+		name = fileprefix + "\\adjlist_tkde";
+	}
+	else {
+		name = fileprefix + "\\adjlist";
+	}
 	//sprintf(tmpFileName, "%s\\adjlist", fileprefix);
 	AdjFile = fopen(name.c_str(), "rb");
 	CheckFile(AdjFile, tmpFileName);

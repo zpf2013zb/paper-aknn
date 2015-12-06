@@ -1,5 +1,5 @@
-#ifndef __NET_SHARED
-#define __NET_SHARED
+#ifndef __NET_SHARED_
+#define __NET_SHARED_
 
 #include <queue>
 #include <bitset>
@@ -14,7 +14,7 @@ using namespace std;
 
 extern int NodeNum;
 extern int EdgeNum;
-
+extern int NNnum;
 // define the query point
 struct roadParameter {
 	int avgNKwd;
@@ -140,6 +140,33 @@ inline void breakKey(__int64 key,int& Ni,int& Nj)
     Ni=key/NodeNum;
     Nj=key%NodeNum;
 }
+
+
+
+//-------
+// Step
+//-------
+struct StepEvent {
+	float dist;
+	int node, ClusID;	// ClusID for multiple expansion
+	float accDist;		// posDist for gendata.cc only
+
+	float gdist, hdist;
+	float xc, yc;
+	bool isSortAcc;
+};
+
+struct StepComparison
+{
+	bool operator () (const StepEvent& left, const StepEvent& right) const
+	{
+		return left.dist > right.dist;
+	}
+};
+
+typedef	priority_queue<StepEvent, vector<StepEvent>, StepComparison> StepQueue;
+
+void printStepEvent(StepEvent& event);
 
 /*
 void printEdgeKeys()

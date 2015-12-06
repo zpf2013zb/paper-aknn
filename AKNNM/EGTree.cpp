@@ -10,6 +10,7 @@
 // set all edge weight to 1(unweighted graph)
 #define ADJWEIGHT_SET_TO_ALL_ONE true
 // we assume edge weight is integer, thus (input edge) * WEIGHT_INFLATE_FACTOR = (our edge weight)
+//#define WEIGHT_INFLATE_FACTOR 100000
 #define WEIGHT_INFLATE_FACTOR 100000
 // egtree fanout
 #define PARTITION_PART 4
@@ -402,6 +403,9 @@ void egtree_save(string filename) {
 		// mind
 		int count_mind = EGTree[i].mind.size();
 		fwrite(&count_mind, sizeof(float), 1, fout);
+		
+		// divide the factor
+
 		copy(EGTree[i].mind.begin(), EGTree[i].mind.end(), buff);
 		fwrite(buff, sizeof(float), count_mind, fout);
 		// unionkwds
