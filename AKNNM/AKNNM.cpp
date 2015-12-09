@@ -21,17 +21,21 @@ using namespace std;
 
 #define INFINITE_MAX 100000000.0
 #define MAX_KEYWORDN 64 
+
+#define WFACTOR 1000000
 // define the query path
 string basepath = "..\\dataset";
 
-int nOfPageAccessed = 0;
-int nOfEdgeExpended = 0;
-int nOfEdgeExpendedQ = 0;
+int nOfPageAccessed;
+int nOfEdgeExpended;
+int nOfEdgeExpendedQ;
 int algorithmId;
 
-
+int nodeleft, noderight;
 int BlkLen;
 int i_capacity;
+unsigned long long keyw;
+unsigned long long interkeyw;
 
 int NodeNum;
 int EdgeNum;
@@ -42,7 +46,7 @@ EdgeMapType EdgeMap;	// key: i0*NodeNum+j0
 FILE *PtFile, *AdjFile;
 BTree *PtTree;
 
-int poicnt = 0;
+//int poicnt = 0;
 Query Q;
 
 // for TKDE2005
@@ -59,9 +63,6 @@ struct DistElem {
 	float dist;
 };
 typedef vector<DistElem> DistQueue;
-
-
-
 
 BitStore* astar_Visits;		// tmp. bitmap for A* search
 
@@ -81,14 +82,15 @@ bool isNNquery = true;
 bool isEuclidSpace = true;
 bool isWeightUse = false;
 char ptgrprtfn[255];
+int NNnum;
+bool isSumDist = false;
 
 DistQueue dQ_graph;
 //extern BTree *PtTree;
 //extern struct QueryPoint;
 //extern QueryPoint* Q.querypts;
 //extern int NodeNum;
-int NNnum;
-bool isSumDist = true;
+
 //extern int Q.k;
 //extern Query Q;
 
@@ -97,6 +99,10 @@ bool isSumDist = true;
 struct result {
 	int poid;
 	float distance;
+	int nodei;
+	int nodej;
+	unsigned long long inter;
+	unsigned long long kwdnode;
 };
 result rs;
 
@@ -106,8 +112,6 @@ struct PartAddr {
 };
 
 map<int, PartAddr> paID;
-
-
 vector<TreeNode> EGT;
 set<int> visitedNode; //record the  id of visitedNode treeNodeID
 
@@ -201,7 +205,7 @@ int partAddrLoad(const char* filename, map<int, PartAddr> &partID) {
 
 int partAddrLoad(const char* filename, map<int, PartAddr> &partID) {
 
-	printf("loading partAddrFile\n");
+	//printf("loading partAddrFile\n");
 	//FILE *paFile;
 	//paFile = fopen(filename, "r+");
 	//CheckFile(paFile, filename);
@@ -246,20 +250,21 @@ void comQueryPath(Query Q, vector<TreeNode> &EGT) {
 		int posi = find(EGT[pid].leafnodes.begin(), EGT[pid].leafnodes.end(), q.Ni) - EGT[pid].leafnodes.begin();
 		int posj = find(EGT[pid].leafnodes.begin(), EGT[pid].leafnodes.end(), q.Nj) - EGT[pid].leafnodes.begin();
 		int pi = 0, pj = 0;
-		vector<float> dis;
+		int sizeb = EGT[pid].borders.size();
+		vector<float> dis(sizeb,0);
 		map<int, vector<float>> nodePath;
-		for (int j = 0; j < EGT[pid].borders.size(); j++) {
-			pi = j*EGT[pid].leafnodes.size() + posi;
-			pj = j*EGT[pid].leafnodes.size() + posj;
+		for (int j = 0; j < sizeb; j++) {
+			pi = j*sizeb + posi;
+			pj = j*sizeb + posj;
 			float tempi = EGT[pid].mind[pi];
 			float tempj = EGT[pid].mind[pj];
 			tempi += q.dist_Ni;
 			tempj += (q.distEdge - q.dist_Ni);
 			if (tempi < tempj) {
-				dis.push_back(tempi);
+				dis[j] = tempi;
 			}
 			else {
-				dis.push_back(tempj);
+				dis[j] = tempj;
 			}
 		}
 		nodePath[pid] = dis;
@@ -268,8 +273,9 @@ void comQueryPath(Query Q, vector<TreeNode> &EGT) {
 			//queryPath
 			preid = pid;
 			pid = EGT[pid].father;
-			vector<float> bdis;
-			for (int l = 0; l < EGT[pid].borders.size(); l++) {
+			int sizep = EGT[pid].borders.size();
+			vector<float> bdis(sizep,0);
+			for (int l = 0; l < sizep; l++) {
 				int border = EGT[pid].borders[l];
 				posi = find(EGT[pid].union_borders.begin(), EGT[pid].union_borders.end(), border) - EGT[pid].union_borders.begin();
 				float min = INFINITE_MAX;
@@ -278,18 +284,21 @@ void comQueryPath(Query Q, vector<TreeNode> &EGT) {
 					int dist;
 					posj = find(EGT[pid].union_borders.begin(), EGT[pid].union_borders.end(), preborder) - EGT[pid].union_borders.begin();
 					int index;
+					float predist = nodePath[preid][k];
 					// be careful
 					if (posi > posj) {
 						index = ((posi + 1)*posi) / 2 + posj;
 						dist = EGT[pid].mind[index];
+						dist += predist;
 					}
 					else {
 						index = ((posj + 1)*posj) / 2 + posi;
 						dist = EGT[pid].mind[index];
+						dist += predist;
 					}
 					if (dist < min) min = dist;
 				}
-				bdis.push_back(min);
+				bdis[l] = min;
 			}
 			nodePath[pid] = bdis;
 		}
@@ -300,10 +309,28 @@ void comQueryPath(Query Q, vector<TreeNode> &EGT) {
 	int f = 0;
 }
 
-
 void initialQuery(string fileprefix) {
 	nOfPageAccessed = 0;
 	nOfEdgeExpended = 0;
+	nodeleft = -1;
+	noderight = -1;
+	keyw = 0;
+	interkeyw = 0;
+
+	rs.distance = MAX_DIST;
+	rs.nodei = -1;
+	rs.nodej = -1;
+	rs.inter = 0;
+	rs.kwdnode = 0;
+	rs.poid = -1;
+	
+	//paID.clear();
+	EGT.clear();
+	visitedNode.clear(); //record the  id of visitedNode treeNodeID
+	edgevisited.clear(); // edgeID, isVisited
+	while (!pq.empty()) pq.pop();
+	queryPath.clear();
+
 	if (algorithmId > 2) return;
 	char tmpFileName[255];
 	// load egtree
@@ -319,7 +346,6 @@ void initialQuery(string fileprefix) {
 	//partAddrLoad(name.c_str(), paID);
 	comQueryPath(Q, EGT);
 }
-
 
 //计算q到vertex的距离
 vector<float> dijkstra_candidate(QueryPoint s, vector<int> &cands) {
@@ -343,7 +369,8 @@ vector<float> dijkstra_candidate(QueryPoint s, vector<int> &cands) {
 	q[vj] = s.distEdge - s.dist_Ni;
 
 	// start
-	int min, minpos, adjnode, weight;
+	int min, minpos, adjnode;
+	float weight;
 	while (!todo.empty() && !q.empty()) {
 		min = -1;
 		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
@@ -424,7 +451,8 @@ float dijkstra(int nodei, int nodej, float upperbound) {
 	//q[vj] = edgedist;
 
 	// start
-	int min, minpos, adjnode, weight;
+	int min, minpos, adjnode;
+	float weight;
 	while (!todo.empty() && !q.empty()) {
 		min = -1;
 		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
@@ -537,8 +565,17 @@ void EGTDA( ) {
 								pv.push_back(pt);
 							}
 							else {
-								pv[l].vdist[i] = result[l];								
-								pv[l].sumDist += result[l];
+								pv[l].vdist[i] = result[l];	
+// ************modified*********
+								if (isSumDist) {
+									pv[l].sumDist += result[l];
+								}
+								else {
+									if (result[l] > pv[l].sumDist) {
+										pv[l].sumDist = result[l];
+									}										
+								}
+								//pv[l].sumDist += result[l];
 							}
 						}
 					}
@@ -574,7 +611,15 @@ void EGTDA( ) {
 								}
 								// 可能有问题，vdist未初始化
 								pv[l].vdist[i] = min; 
-								pv[l].sumDist += min;
+								if (isSumDist) {
+									pv[l].sumDist += min;
+								}
+								else {
+									if (pv[l].sumDist < min) {
+										pv[l].sumDist = min;
+									}
+								}
+								//pv[l].sumDist += min;
 							}
 						}
 					}
@@ -629,13 +674,27 @@ void EGTDA( ) {
 													float dis = 0;
 													dis = fabsf(PtDist - Q.querypts[f].dist_Ni);
 													if (dis < (0.5*EdgeDist)) {
-														sum += dis;
+//************modified
+														if (isSumDist) {
+															sum += dis;
+														}
+														else {
+															if (sum < dis) sum = dis;
+														}
+														//sum += dis;
 													}
 													else {
 														float dist = dijkstra(vid, NewNodeID, dis);
 														dist = (EdgeDist - dis) + dist;
 														if (dis > dist) dis = dist;
-														sum += dis;
+//************modified														
+														if (isSumDist) {
+															sum += dis;
+														}
+														else {
+															if (sum < dis) sum = dis;
+														}
+														//sum += dis;
 													}													
 													continue;
 												}
@@ -651,12 +710,23 @@ void EGTDA( ) {
 													disj = EdgeDist - PtDist + pt.vdist[f];
 												}
 												if (disi > disj) disi = disj;
-												sum = sum + disi;
+//**************modified
+												if (isSumDist) {
+													sum = sum + disi;
+												}
+												else {
+													if (sum < disi) sum = disi;
+												}
+												//sum = sum + disi;
 											}
 											// have computed the distance between each points to query:sum
 											if (sum < rs.distance) {
 												rs.distance = sum;
 												rs.poid = pid;
+												rs.nodei = vid;
+												rs.nodej = NewNodeID;
+												rs.kwdnode = pkwd;
+												rs.inter = (pkwd&Q.keywords);
 											}
 										}
 									}
@@ -785,7 +855,16 @@ void EGTDA( ) {
 								*/
 
 							}
-							childnode[j].dist = childnode[j].dist + mind;
+// ***********modified
+							if (isSumDist) {
+								childnode[j].dist = childnode[j].dist + mind;
+							}
+							else {
+								if (childnode[j].dist < mind) {
+									childnode[j].dist =  mind;
+								}
+							}
+							//childnode[j].dist = childnode[j].dist + mind;
 							//pq.push(pn);
 						}
 					}
@@ -852,7 +931,14 @@ void EGTDA( ) {
 							if (queryedge[f] == edgeid) { // on edge
 								float dis = 0;
 								dis = fabsf(PtDist - Q.querypts[f].dist_Ni);
-								sum += dis;
+//*********modified
+								if (isSumDist) {
+									sum += dis;
+								}
+								else {
+									if (sum < dis) sum = dis;
+								}
+								//sum += dis;
 								continue;
 							}
 							float dis;
@@ -864,11 +950,22 @@ void EGTDA( ) {
 								dis = EdgeDist - PtDist;
 								//sum = sum + Q.k*dis;
 							}
-							sum = sum + es.qTbdist[f] + dis;								
+//*********modified							
+							if (isSumDist) {
+								sum = sum + es.qTbdist[f] + dis;
+							}
+							else {
+								if (sum < (es.qTbdist[f] + dis)) sum = es.qTbdist[f] + dis;
+							}
+							//sum = sum + es.qTbdist[f] + dis;								
 						}
 						if (sum < rs.distance) {
 							rs.distance = sum;
 							rs.poid = pid;
+							rs.nodei = vid;
+							rs.nodej = vjd;
+							rs.kwdnode = pkwd;
+							rs.inter = (pkwd&Q.keywords);
 						}
 
 					}
@@ -878,9 +975,14 @@ void EGTDA( ) {
 		
 
 	}
-	printf("The result of TDA distance is: %f\n", rs.distance);
+	//printf("The result of TDA distance is: %f\n", rs.distance);
 	printf("The result of TDA oid is: %d\n", rs.poid);
 	printf("The result of TDA edgeexpand is: %d\n", nOfEdgeExpended);
+	printf("The result of TDA nodei is: %d\n", rs.nodei);
+	printf("The result of TDA nodej is: %d\n", rs.nodej);
+	//printf("The result of TDA kwdnode is: %llu\n", rs.kwdnode);
+	//printf("The result of TDA interse is: %llu\n", rs.inter);
+	//printf("The result of TDA querykwd is: %llu\n", Q.keywords);
 }
 
 bool iscontained(set<unsigned long long> coverkws, unsigned long long kwd) {
@@ -987,6 +1089,13 @@ void EGETDA() {
 								// 可能有问题，vdist未初始化
 								pv[l].vdist[i] = min;
 								pv[l].sumDist += min;
+// *********modified
+								if (isSumDist) {
+									pv[l].sumDist += min;
+								}
+								else {
+									if (pv[l].sumDist < min) pv[l].sumDist = min;
+								}
 							}
 						}
 					}
@@ -1000,6 +1109,7 @@ void EGETDA() {
 					int vid = pt.vertexID;
 					__int64 vide = vid;
 					AdjGrpAddr = getAdjListGrpAddr(vid);
+					
 					getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);
 					for (int n = 0; n < AdjListSize; n++) {
 						getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, n);
@@ -1032,6 +1142,7 @@ void EGETDA() {
 										getVarE(PT_DIST, Ref(PtDist), PtGrpKey, t);
 										getVarE(PT_KWD, &pkwd, PtGrpKey, t);
 										getVarE(PT_P, &pid, PtGrpKey, t);
+
 										if ((pkwd&Q.keywords) != Q.keywords) {
 											continue;
 										}
@@ -1041,17 +1152,33 @@ void EGETDA() {
 											for (int f = 0; f < Q.k; f++) {
 												// two case:1,q on this edge; 2: q not on this edge
 												//if (find(queryedge.begin(), queryedge.end(), edge) != queryedge.end()) { // on edge
+												int ni = Q.querypts[f].Ni;
+												int nj = Q.querypts[f].Nj;
 												if (queryedge[f] == edge) { // on edge
 													float dis = 0;
 													dis = fabsf(PtDist - Q.querypts[f].dist_Ni);
 													if (dis < (0.5*EdgeDist)) {
-														sum += dis;
+//***********modified
+														if (isSumDist) {
+															sum += dis;
+														}
+														else {
+															if (sum < dis) sum = dis;
+														}
+														//sum += dis;
 													}
 													else {
 														float dist = dijkstra(vid, NewNodeID, dis);
 														dist = (EdgeDist - dis) + dist;
 														if (dis > dist) dis = dist;
-														sum += dis;
+														//sum += dis;
+// ************modified
+														if (isSumDist) {
+															sum += dis;
+														}
+														else {
+															if (sum < dis) sum = dis;
+														}
 													}
 													continue;
 												}
@@ -1067,12 +1194,23 @@ void EGETDA() {
 													disj = EdgeDist - PtDist + pt.vdist[f];
 												}
 												if (disi > disj) disi = disj;
-												sum = sum + disi;
+//*********midified
+												if (isSumDist) {
+													sum += disi;
+												}
+												else {
+													if (sum < disi) sum = disi;
+												}
+												//sum = sum + disi;
 											}
 											// have computed the distance between each points to query:sum
 											if (sum < rs.distance) {
 												rs.distance = sum;
 												rs.poid = pid;
+												rs.nodei = vid;
+												rs.nodej = NewNodeID;
+												rs.kwdnode = pkwd;
+												rs.inter = pkwd&Q.keywords;
 											}
 										}
 									}
@@ -1203,7 +1341,14 @@ void EGETDA() {
 								*/
 
 							}
-							childnode[j].dist = childnode[j].dist + mind;
+//**********modified
+							if (isSumDist) {
+								childnode[j].dist = childnode[j].dist + mind;
+							}
+							else {
+								if(childnode[j].dist < mind) childnode[j].dist = mind;
+							}
+							//childnode[j].dist = childnode[j].dist + mind;
 							//pq.push(pn);
 						}
 					}
@@ -1270,7 +1415,13 @@ void EGETDA() {
 							if (queryedge[f] == edgeid) { // on edge
 								float dis = 0;
 								dis = fabsf(PtDist - Q.querypts[f].dist_Ni);
-								sum += dis;
+								if (isSumDist) {
+									sum += dis;
+								}
+								else {
+									if (sum < dis) sum = dis;
+								}
+								//sum += dis;
 								continue;
 							}
 							float dis;
@@ -1282,11 +1433,21 @@ void EGETDA() {
 								dis = EdgeDist - PtDist;
 								//sum = sum + Q.k*dis;
 							}
-							sum = sum + es.qTbdist[f] + dis;
+							if (isSumDist) {
+								sum = sum + es.qTbdist[f] + dis;
+							}
+							else {
+								if (sum < (es.qTbdist[f] + dis)) sum = es.qTbdist[f] + dis;
+							}						
+							// sum = sum + es.qTbdist[f] + dis;
 						}
 						if (sum < rs.distance) {
 							rs.distance = sum;
 							rs.poid = pid;
+							rs.nodei = vid;
+							rs.nodej = vjd;
+							rs.kwdnode = pkwd;
+							rs.inter = pkwd&Q.keywords;
 						}
 
 					}
@@ -1296,15 +1457,20 @@ void EGETDA() {
 
 
 	}
-	printf("The result of ETDA distance is: %f\n", rs.distance);
+	//printf("The result of ETDA distance is: %f\n", rs.distance);
 	printf("The result of ETDA oid is: %d\n", rs.poid);
 	printf("The result of ETDA edgeexpended is: %d\n", nOfEdgeExpended);
+	printf("The result of ETDA nodei is: %d\n", rs.nodei);
+	printf("The result of ETDA nodej is: %d\n", rs.nodej);
+	//printf("The result of ETDA kwdnode is: %llu\n", rs.kwdnode);
+	//printf("The result of ETDA interse is: %llu\n", rs.inter);
+	//printf("The result of ETDA querykwd is: %llu\n", Q.keywords);
 }
 
-int k = 7;
+int k = 10;
 int qk = 3;
-int np = 7;
-int nOfTest = 1;
+int np = 5;
+int nOfTest = 4;
 struct querycand {
 	int nodei;
 	int nodej;
@@ -1377,6 +1543,7 @@ void geneQuery(string prxfilename) {
 			dis = (randnum*qu.length) / RAND_MAX;
 			oFile << "," << qu.nodei << " " << qu.nodej << " " << qu.length << " " << dis;
 		}
+		oFile << endl;
 		l++;
 	}
 	iFile.close();
@@ -1448,9 +1615,11 @@ inline void processDQ(DistQueue& dQ, float& topdist, float newdist, int id) {
 		while (pos>0 && dQ[pos - 1].dist >= newdist) pos--;
 		for (int i = dQ.size() - 1; i>pos; i--) dQ[i] = dQ[i - 1];
 		dQ[pos] = new_elem;
+		//printf("The candicate id is :%d, distance is: %f\n", dQ[0].id, dQ[0].dist);
 	}
 	else {
 		if (newdist<dQ[NNnum - 1].dist) {
+			//printf("The candicate id is :%d, distance is: %f\n", dQ[NNnum - 1].id, dQ[NNnum - 1].dist);
 			int old_id = dQ[NNnum - 1].id;
 			elem_map.erase(old_id);
 			elem_map[id] = newdist;
@@ -1462,6 +1631,12 @@ inline void processDQ(DistQueue& dQ, float& topdist, float newdist, int id) {
 		}
 	}
 	if (dQ.size() >= NNnum) topdist = dQ[NNnum - 1].dist;	// still quite cheap !													
+	rs.nodei = nodeleft;
+	rs.nodej = noderight;
+	rs.distance = dQ.begin()->dist;
+	rs.poid = dQ.begin()->dist;
+	rs.inter = interkeyw;
+	rs.kwdnode = keyw;
 }
 
 // utilize the vj to update the distqueue
@@ -1478,14 +1653,27 @@ inline void UpdateOnePt(float vJ, bool& hasChanged, BitStore& onSameEdge, float 
 inline float getOptPos(int NodeID, int NewNodeID, float eKdist, float& bestPos) {
 	float vJ, bestVal, tmpPos, tmpVal;
 	int sid = 0, eid = 1;
-	if (NewNodeID<NodeID) { sid = 1; eid = 0; }
+	//if (NewNodeID<NodeID) { sid = 1; eid = 0; }
 
 	for (int sp = 0; sp<Q.k; sp++) {
 		partdists[sp][0] = partdists[sp][1] = MAX_DIST;
-		if (DistMaps[sp].count(NodeID)>0)
+		/*if (DistMaps[sp].count(NodeID)>0)
 			partdists[sp][sid] = DistMaps[sp][NodeID];
 		if (DistMaps[sp].count(NewNodeID)>0)
-			partdists[sp][eid] = DistMaps[sp][NewNodeID];
+			partdists[sp][eid] = DistMaps[sp][NewNodeID];*/
+		if (NewNodeID < NodeID) {
+			if (DistMaps[sp].count(NodeID)>0) partdists[sp][1] = DistMaps[sp][NodeID];
+			else printf("Dist Error in UpdatePoints\n");
+			if (DistMaps[sp].count(NewNodeID)>0) partdists[sp][0] = DistMaps[sp][NewNodeID];
+			else printf("Dist Error in UpdatePoints\n");
+			//int qNi = Q.querypts[sp].Ni, qNj = Q.querypts[sp].Nj;
+		}
+		else {
+			if (DistMaps[sp].count(NodeID)>0) partdists[sp][0] = DistMaps[sp][NodeID];
+			else printf("Dist Error in UpdatePoints\n");
+			if (DistMaps[sp].count(NewNodeID)>0) partdists[sp][1] = DistMaps[sp][NewNodeID];
+			else printf("Dist Error in UpdatePoints\n");
+		}
 		int qNi = Q.querypts[sp].Ni, qNj = Q.querypts[sp].Nj;
 		onSameEdge[sp] = (NodeID == qNi&&NewNodeID == qNj) || (NodeID == qNj&&NewNodeID == qNi);
 	}
@@ -1535,37 +1723,64 @@ bool UpdatePoints(int NodeID, int NewNodeID, int PtGrpAddr, float eKdist) {
 	bool hasChanged = false;
 	unsigned long long sumkwd;
 	int sid = 0, eid = 1;
-	if (NewNodeID<NodeID) { sid = 1; eid = 0; }
+	//if (NewNodeID<NodeID) { sid = 1; eid = 0; }
 
 	for (int sp = 0; sp<Q.k; sp++) {
 		partdists[sp][0] = partdists[sp][1] = MAX_DIST;
-		if (DistMaps[sp].count(NodeID)>0)
-			partdists[sp][sid] = DistMaps[sp][NodeID];
-		if (DistMaps[sp].count(NewNodeID)>0)
-			partdists[sp][eid] = DistMaps[sp][NewNodeID];
+		if (NewNodeID < NodeID) {
+			if (DistMaps[sp].count(NodeID)>0) partdists[sp][1] = DistMaps[sp][NodeID];
+			else printf("Dist Error in UpdatePoints\n");
+			if (DistMaps[sp].count(NewNodeID)>0) partdists[sp][0] = DistMaps[sp][NewNodeID];
+			else printf("Dist Error in UpdatePoints\n");
+			//int qNi = Q.querypts[sp].Ni, qNj = Q.querypts[sp].Nj;
+		}
+		else {
+			if (DistMaps[sp].count(NodeID)>0) partdists[sp][0] = DistMaps[sp][NodeID];
+			else printf("Dist Error in UpdatePoints\n");
+			if (DistMaps[sp].count(NewNodeID)>0) partdists[sp][1] = DistMaps[sp][NewNodeID];
+			else printf("Dist Error in UpdatePoints\n");
+		}
+		/*if (distmaps[sp].count(nodeid)>0) partdists[sp][sid] = distmaps[sp][nodeid];
+		else printf("dist error in updatepoints\n");
+		if (distmaps[sp].count(newnodeid)>0) partdists[sp][eid] = distmaps[sp][newnodeid];
+		else printf("dist error in updatepoints\n");*/
 		int qNi = Q.querypts[sp].Ni, qNj = Q.querypts[sp].Nj;
 		onSameEdge[sp] = (NodeID == qNi&&NewNodeID == qNj) || (NodeID == qNj&&NewNodeID == qNi);
 	}
 
-	if (isNNquery) {
-		int PtGrpSize, dummy;
-		//PtGrpAddr = pointQuery(PtTree, PtGrpKey, dummy);
-		nOfEdgeExpended++;
-		getFixedF(SIZE_P, Ref(PtGrpSize), PtGrpAddr);
-		for (int j = 0; j<PtGrpSize; j++) {	// scan
-			int pid = 0;
-			getVarE(PT_P, Ref(pid), PtGrpAddr, j);
-			getVarE(PT_DIST, Ref(vJ), PtGrpAddr, j);
-			getVarE(PT_KWD, Ref(sumkwd), PtGrpAddr, j);
-			if ((sumkwd&Q.keywords) != Q.keywords) continue;
-			UpdateOnePt(vJ, hasChanged, onSameEdge, eKdist, pid);
+	
+	int PtGrpSize, dummy;
+	//PtGrpAddr = pointQuery(PtTree, PtGrpKey, dummy);
+	nOfEdgeExpended++;
+	getFixedF(SIZE_P, Ref(PtGrpSize), PtGrpAddr);
+	for (int j = 0; j<PtGrpSize; j++) {	// scan
+		int pid = 0;
+		
+		getVarE(PT_P, Ref(pid), PtGrpAddr, j);
+		//printf("The pid visited is:%d\n", pid);
+
+		getVarE(PT_DIST, Ref(vJ), PtGrpAddr, j);
+		getVarE(PT_KWD, Ref(sumkwd), PtGrpAddr, j);
+		if ((sumkwd&Q.keywords) != Q.keywords) continue;
+		nodeleft = NodeID;
+		noderight = NewNodeID;
+		keyw = sumkwd;
+		interkeyw = sumkwd&Q.keywords;
+
+		float dist = getNetworkDist(vJ, onSameEdge, eKdist);
+		if (dist < bestdist) {
+			bestdist = dist;
+			rs.distance = bestdist;
+			rs.inter = (sumkwd&Q.keywords);
+			rs.kwdnode = sumkwd;
+			rs.nodei = NodeID;
+			rs.nodej = NewNodeID;
+			rs.poid = pid;
 		}
+		//UpdateOnePt(vJ, hasChanged, onSameEdge, eKdist, pid);
 	}
-	else {
-		vJ = 0;
-		getOptPos(NodeID, NewNodeID, eKdist, vJ);
-		UpdateOnePt(vJ, hasChanged, onSameEdge, eKdist, -1);
-	}
+	
+	
 	//if (bestdist<MAX_DIST) {PrintElapsed();	exit(0);}
 	/*if (hasChanged)
 	printf("c: %d %d %f\n",NodeID,NewNodeID,eKdist);*/
@@ -1739,28 +1954,35 @@ void ConcurrentExpansion(StepQueue& sQ) {
 			}
 		}
 	}
-	printf("Heap: max_size %d, pop_size %d\n", MaxHeapSize, AggPopSize);
-	printf("bestdist: %f\n", bestdist);
-	if (!sQ.empty()) printf("topdist: %f\n", sQ.top().dist);
+	//printf("Heap: max_size %d, pop_size %d\n", MaxHeapSize, AggPopSize);
+	//printf("bestdist: %f\n", bestdist);
+	//if (!sQ.empty()) printf("topdist: %f\n", sQ.top().dist);
 	int totalmapsize = 0;
 	for (int sp = 0; sp<Q.k; sp++) {
 		//printf("%d) td_sz: %d\n",sp,DistMaps[sp].size());
 		totalmapsize += DistMaps[sp].size();
 	}
 	//printf("totalmapsize: %d, maxNbrSz: %d\n", totalmapsize, maxNbrSize);
-	rs.distance = INFINITE_MAX;
-	rs.poid = -1;
+	//rs.distance = INFINITE_MAX;
+	//rs.poid = -1;
 
-	if (dQ_graph.begin() != dQ_graph.end()) {
+	/*if (dQ_graph.begin() != dQ_graph.end()) {
 		rs.distance = dQ_graph.begin()->dist;
 		rs.poid = dQ_graph.begin()->id;
-	}
+	}*/
 	
-	printf("The result of CE distance is: %f\n", rs.distance);
+
+	//printf("The result of CE distance is: %f\n", rs.distance);
 	printf("The result of CE oid is: %d\n", rs.poid);
 	printf("The result of CE edgeexpand is: %d\n", nOfEdgeExpended);
+	printf("The result of CE  nodei is: %d\n", rs.nodei);
+	printf("The result of CE  nodej is: %d\n", rs.nodej);
+	//printf("The result of CE  kwdnode is: %llu\n", rs.kwdnode);
+	//printf("The result of CE  interkew is: %llu\n", rs.inter);
+	//printf("The result of CE  query is: %llu\n", Q.keywords);
 }
 // compute the distance between current node to the dest with the A* 
+/*
 float A_star(StepQueue& aQ, BitStore& isVisited, DISTMAP& curdistmap, int dest, int& PopSize, int& VisitedSize) {
 	// gdist: from src to cur ; hdist: from cur to dist
 	float x_dest, y_dest, x_cur, y_cur;
@@ -1790,7 +2012,7 @@ float A_star(StepQueue& aQ, BitStore& isVisited, DISTMAP& curdistmap, int dest, 
 			newevent.gdist += eKdist;
 			newevent.hdist = 0;
 
-			TmpAdjGrpAddr = getAdjListGrpAddr(NewNodeID);
+			//TmpAdjGrpAddr = getAdjListGrpAddr(NewNodeID);
 			//getFixedF(XCRD_A, Ref(x_cur), TmpAdjGrpAddr);
 			//getFixedF(YCRD_A, Ref(y_cur), TmpAdjGrpAddr);
 			//newevent.xc = x_cur;		
@@ -1807,6 +2029,67 @@ float A_star(StepQueue& aQ, BitStore& isVisited, DISTMAP& curdistmap, int dest, 
 	}
 	return MAX_DIST;
 }
+*/
+
+float A_star(StepQueue& aQ, BitStore& isVisited, DISTMAP& curdistmap, int dest, int& PopSize, int& VisitedSize) {
+	// gdist: from src to cur ; hdist: from cur to dist
+	float x_dest, y_dest, x_cur, y_cur;
+	int TmpAdjGrpAddr = getAdjListGrpAddr(dest);
+	//getFixedF(XCRD_A, Ref(x_dest), TmpAdjGrpAddr);
+	//getFixedF(YCRD_A, Ref(y_dest), TmpAdjGrpAddr);
+
+	while (!aQ.empty()) {
+		StepEvent event = aQ.top();
+		aQ.pop();	PopSize++;
+
+		int NodeID = event.node;
+
+		if (isVisited[NodeID]) {
+			if (curdistmap[NodeID] > event.dist) curdistmap[NodeID] = event.dist;
+			continue;
+		}
+		isVisited[NodeID] = true;
+		VisitedSize++;
+		curdistmap[NodeID] = event.dist;	// only gdist means the real dist. from src. !!!
+
+		float eKdist;
+		int AdjListSize, NewNodeID, AdjGrpAddr;
+		AdjGrpAddr = getAdjListGrpAddr(NodeID);
+		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);	// read # entries
+		for (int z = 0; z<AdjListSize; z++) {
+			getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, z);
+			getVarE(DIST_A, Ref(eKdist), AdjGrpAddr, z);
+
+			//StepEvent newevent = event;	// copy ...
+			StepEvent newevent;
+			newevent.ClusID = event.ClusID;
+			newevent.node = NewNodeID;
+			//newevent.gdist = event.gdist + eKdist;
+			//newevent.hdist = 0;
+
+			//TmpAdjGrpAddr = getAdjListGrpAddr(NewNodeID);
+			//getFixedF(XCRD_A, Ref(x_cur), TmpAdjGrpAddr);
+			//getFixedF(YCRD_A, Ref(y_cur), TmpAdjGrpAddr);
+			//newevent.xc = x_cur;		
+			//newevent.yc = y_cur;
+
+			//if (isEuclidSpace) newevent.hdist = getDist(x_cur, y_cur, x_dest, y_dest);
+			newevent.dist = event.dist + eKdist;
+
+			// pathmax equation for non-monotonic heuristic ?
+			if (newevent.dist<event.dist) newevent.dist = event.dist;
+			if (isVisited[NewNodeID] == false) aQ.push(newevent);
+			// propagation		
+		}
+		if (NodeID == dest) {
+			float dis = event.dist;
+			//curdistmap[dest] = dis;
+			return dis;
+		}
+
+	}
+	return MAX_DIST;
+}
 
 struct ValuePair {
 	float value;
@@ -1817,6 +2100,7 @@ FastArray<ValuePair> covernodeset;
 
 void Repair_astar(StepQueue& aQ, BitStore& isVisited, int dest) {
 	int tsize = 0;
+	int size = aQ.size();
 	StepEvent* tmpAry = new StepEvent[aQ.size()];
 
 	float x_dest, y_dest, x_cur, y_cur;
@@ -1828,7 +2112,7 @@ void Repair_astar(StepQueue& aQ, BitStore& isVisited, int dest) {
 		StepEvent event = aQ.top();
 		aQ.pop();
 		if (isVisited[event.node]) continue;
-
+		isVisited[event.node] = true;
 		// assume xc yc fields initialized by the caller !
 		event.hdist = 0;	// for Dijkstra
 							//if (isEuclidSpace) event.hdist = getDist(x_dest, y_dest, event.xc, event.yc);
@@ -1840,6 +2124,89 @@ void Repair_astar(StepQueue& aQ, BitStore& isVisited, int dest) {
 	delete[] tmpAry;
 }
 
+float dijkstra(vector<StepEvent> se, int nodej) {
+	// init
+	int AdjGrpAddr, AdjListSize, NewNodeID, PtGrpKey, PtNumOnEdge;
+	float EdgeDist, PtDist;
+	set<int> todo;
+	todo.clear();
+	todo.insert(nodej);
+
+	unordered_map<int, float> result;
+	result.clear();
+	set<int> visitedNode;
+	visitedNode.clear();
+	unordered_map<int, float> q;
+	q.clear();
+	for (int i = 0; i < se.size(); i++) {
+		int id = se[i].node;
+		float dis = se[i].dist;
+		q[id] = dis;
+	}
+
+	// start
+	int min, minpos, adjnode, weight;
+	while (!todo.empty() && !q.empty()) {
+		min = -1;
+		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
+			if (min == -1) {
+				minpos = it->first;
+				min = it->second;
+			}
+			else {
+				if (it->second < min) {
+					min = it->second;
+					minpos = it->first;
+				}
+			}
+		}
+		//if (min > upperbound) break;
+		// put min to result, add to visitedNode
+		result[minpos] = min;
+		visitedNode.insert(minpos);
+		q.erase(minpos);
+
+		if (todo.find(minpos) != todo.end()) {
+			todo.erase(minpos);
+		}
+
+		// expand
+		AdjGrpAddr = getAdjListGrpAddr(minpos);
+		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);
+
+		for (int i = 0; i < AdjListSize; i++) {
+			getVarE(ADJNODE_A, &adjnode, AdjGrpAddr, i);
+			//adjnode = graph[minpos].adjnodes[i];
+			if (visitedNode.find(adjnode) != visitedNode.end()) {
+				continue;
+			}
+
+			getVarE(DIST_A, &weight, AdjGrpAddr, i);
+			//weight = graph[minpos].adjweight[i];
+
+			if (q.find(adjnode) != q.end()) {
+				if (min + weight < q[adjnode]) {
+					q[adjnode] = min + weight;
+				}
+			}
+			else {
+				q[adjnode] = min + weight;
+			}
+
+		}
+	}
+
+	// output
+	float dis = INFINITE_MAX;
+	if (result.count(nodej) > 0) {
+		dis = result[nodej];
+	}
+
+	// return
+	return dis;
+}
+
+/*
 void TA_EW(StepQueue* raQ, StepQueue& sQ) {
 	float eKdist;
 	int AdjListSize, NewNodeID, AdjGrpAddr, PtGrpKey;
@@ -1855,6 +2222,8 @@ void TA_EW(StepQueue* raQ, StepQueue& sQ) {
 		curround = event.ClusID;
 		if (saVisited[curround][NodeID]) continue;
 		saVisited[curround][NodeID] = true;	// !!!
+// ********new added
+		raQ[curround].push(event);
 
 		AdjGrpAddr = getAdjListGrpAddr(NodeID);
 		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);	// read # entries
@@ -1899,14 +2268,15 @@ void TA_EW(StepQueue* raQ, StepQueue& sQ) {
 				curnetdist = max(curnetdist, cpdist);
 			}
 		}
-		/*
-		if (totround%PrintLimit == PrintLimit - 1) {
-			printf("%d: %f %f\n", totround, mindist, bestdist);
-			PrintElapsed();
-		}
-		*/
+		
+		//if (totround%PrintLimit == PrintLimit - 1) {
+		//	printf("%d: %f %f\n", totround, mindist, bestdist);
+		//	PrintElapsed();
+		//}
+		
 		totround++;
-		if (mindist >= bestdist) break;
+		// ***********逻辑上有问题？ 
+		// if (mindist >= bestdist) break;
 
 		bool mustPrune = true;
 		for (int z = 0; z<AdjListSize; z++) {
@@ -1918,22 +2288,42 @@ void TA_EW(StepQueue* raQ, StepQueue& sQ) {
 			// L0^- filter
 			if (isSumDist) {
 				if (curnetdist<bestdist + Q.k*eKdist) mustPrune = false;
-				break;
+				//break;
 			}
 			else {
 				if (curnetdist<bestdist + eKdist) mustPrune = false;
-				break;
+				//break;
 			}
 		}
-		if (mustPrune) continue;
+		//if (mustPrune) continue;
 
 		AdjGrpAddr = getAdjListGrpAddr(NodeID);
 		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);	// read # entries
 		for (int s = 0; s<Q.k; s++) {
 			DISTMAP& curDistMap = DistMaps[s];
 			if (curDistMap.count(NodeID) == 0) {
-				Repair_astar(raQ[s], raVisited[s], NodeID);
-				A_star(raQ[s], raVisited[s], curDistMap, NodeID, PopSize, VisitedSize);
+				//Repair_astar(raQ[s], raVisited[s], NodeID);
+				//raVisited[s].assign(saVisited[s].begin(),saVisited[s].end());
+				
+				//float rdist = A_star(raQ[s], saVisited[s], curDistMap, NodeID, PopSize, VisitedSize);				
+				int nodel = Q.querypts[s].Ni;
+				int noder = Q.querypts[s].Nj;
+
+				vector<StepEvent> stepv;
+				StepEvent sel,ser;
+				sel.node = nodel;
+				sel.dist = Q.querypts[s].dist_Ni;
+
+				ser.node = noder;
+				ser.dist = (Q.querypts[s].distEdge - Q.querypts[s].dist_Ni);
+
+				stepv.push_back(sel);
+				stepv.push_back(ser);
+
+				float distance = dijkstra(stepv, NodeID);
+	
+				DistMaps[s][NodeID] = distance; 
+				//saVisited[s][NodeID] = true;
 			}
 		}
 		for (int z = 0; z<AdjListSize; z++) {
@@ -1956,8 +2346,26 @@ void TA_EW(StepQueue* raQ, StepQueue& sQ) {
 				for (int s = 0; s<Q.k; s++) {
 					DISTMAP& curDistMap = DistMaps[s];
 					if (curDistMap.count(NewNodeID) == 0) {
-						Repair_astar(raQ[s], raVisited[s], NewNodeID);
-						A_star(raQ[s], raVisited[s], curDistMap, NewNodeID, PopSize, VisitedSize);
+						//Repair_astar(raQ[s], raVisited[s], NewNodeID);
+						//float rdist = A_star(raQ[s], saVisited[s], curDistMap, NewNodeID, PopSize, VisitedSize);
+						//DistMaps[s][NewNodeID] = rdist;
+						int nodel = Q.querypts[s].Ni;
+						int noder = Q.querypts[s].Nj;
+
+						vector<StepEvent> stepv;
+						StepEvent sel, ser;
+						sel.node = nodel;
+						sel.dist = Q.querypts[s].dist_Ni;
+
+						ser.node = noder;
+						ser.dist = (Q.querypts[s].distEdge - Q.querypts[s].dist_Ni);
+
+						stepv.push_back(sel);
+						stepv.push_back(ser);
+
+						float distance = dijkstra(stepv, NewNodeID);
+
+						DistMaps[s][NewNodeID] = distance;
 					}
 				}
 				bool needUpdate = true;
@@ -1984,6 +2392,174 @@ void TA_EW(StepQueue* raQ, StepQueue& sQ) {
 	printf("The result of TA oid is: %d\n", rs.poid);
 	printf("The result of TA edgeexpand is: %d\n", nOfEdgeExpended);
 }
+*/
+void TA_EW(StepQueue* raQ, StepQueue& sQ) {
+	float eKdist;
+	int AdjListSize, NewNodeID, AdjGrpAddr, PtGrpKey;
+	int PopSize = 0, VisitedSize = 0, NodeID;
+	float cur_x, cur_y, nextdist;
+	int curround, totround = 0;	// # of sorted access
+	unsigned long long sumkwd;
+	float lb_dist = 0;
+	while (!sQ.empty()) {
+		StepEvent event = sQ.top();
+		sQ.pop();
+		NodeID = event.node;
+		//printf("The nodid is %d\n", NodeID);
+		curround = event.ClusID;
+		QueryPoint q = Q.querypts[curround];
+		int teNi = q.Ni;
+		int teNj = q.Nj;
+		float dis = q.distEdge;
+		float disn = q.dist_Ni;
+
+		if (saVisited[curround][NodeID]) continue;
+		saVisited[curround][NodeID] = true;	// !!!
+		// ********new added
+		//printf("The nodid is %d\n", NodeID);
+		float di = event.dist;
+		AdjGrpAddr = getAdjListGrpAddr(NodeID);
+		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);	// read # entries
+		for (int z = 0; z<AdjListSize; z++) {
+			getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, z);
+			getVarE(DIST_A, Ref(eKdist), AdjGrpAddr, z);
+			// *** added part
+			//getFixedF(XCRD_A, Ref(cur_x), AdjGrpAddr);
+			//getFixedF(YCRD_A, Ref(cur_y), AdjGrpAddr);
+			//StepEvent newevent = event;	// copy ...
+			StepEvent newevent;
+			newevent.node = NewNodeID;
+			newevent.ClusID = curround;
+			newevent.dist = event.dist + eKdist;
+			// *** added part
+			//newevent.xc = cur_x;
+			//newevent.yc = cur_y;
+
+			if (saVisited[curround][NewNodeID] == false) sQ.push(newevent);	// propagation		
+		}
+		nextdist = event.dist;
+
+		// get next of curround 
+		DistMaps[curround][NodeID] = nextdist;	// assume valid result
+		//raQ[curround].push(event);
+
+		lb_dist = nextdist;
+
+		float mindist = 0, curnetdist = 0;
+		// *** added part
+		//cur_x = event.xc;
+		//cur_y = event.yc;
+
+		for (int s = 0; s<Q.k; s++) {
+			//float cpdist = getDist(cur_x, cur_y, M_xcrd[s], M_xcrd[s]);
+			float cpdist = 0;
+			if (DistMaps[s].count(NodeID)>0) cpdist = DistMaps[s][NodeID];
+
+			//if (isWeightUse) cpdist = cpdist*weights[s];
+			if (isSumDist) {
+				mindist += lb_dist;
+				curnetdist += cpdist;
+			}
+			else {
+				mindist = max(mindist, lb_dist);
+				curnetdist = max(curnetdist, cpdist);
+			}
+		}
+		/*
+		if (totround%PrintLimit == PrintLimit - 1) {
+		printf("%d: %f %f\n", totround, mindist, bestdist);
+		PrintElapsed();
+		}
+		*/
+		totround++;
+		// ***********逻辑上有问题？ 
+		if (mindist >= bestdist) break;
+
+		bool mustPrune = true;
+		for (int z = 0; z<AdjListSize; z++) {
+			getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, z);
+			getVarE(DIST_A, Ref(eKdist), AdjGrpAddr, z);
+			getVarE(PTKEY_A, Ref(PtGrpKey), AdjGrpAddr, z);
+			getVarE(SUMKWD_A, Ref(sumkwd), AdjGrpAddr, z);
+			//if ((sumkwd&Q.keywords) != Q.keywords) mustPrune = true;
+			// L0^- filter
+			if (isSumDist) {
+				if (curnetdist<bestdist + Q.k*eKdist) mustPrune = false;
+				//break;
+			}
+			else {
+				if (curnetdist<bestdist + eKdist) mustPrune = false;
+				//break;
+			}
+		}
+		if (mustPrune) continue;
+
+		AdjGrpAddr = getAdjListGrpAddr(NodeID);
+		getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);	// read # entries
+		for (int s = 0; s<Q.k; s++) {
+			DISTMAP& curDistMap = DistMaps[s];
+			if (curDistMap.count(NodeID) == 0) {
+			
+				//Repair_astar(raQ[s], raVisited[s], NodeID);
+				A_star(raQ[s], raVisited[s], curDistMap, NodeID, PopSize, VisitedSize);
+			}
+		}
+		for (int z = 0; z<AdjListSize; z++) {
+			getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, z);
+			getVarE(DIST_A, Ref(eKdist), AdjGrpAddr, z);
+			getVarE(PTKEY_A, Ref(PtGrpKey), AdjGrpAddr, z);
+			getVarE(SUMKWD_A, Ref(sumkwd), AdjGrpAddr, z);
+			if ((sumkwd&Q.keywords) != Q.keywords) continue;
+			// L0 filter
+			if (isSumDist) {
+				if (curnetdist >= bestdist + Q.k*eKdist) continue;		// cannot have better distance
+			}
+			else {
+				if (curnetdist >= bestdist + eKdist) continue;		// cannot have better distance
+			}
+
+			// L1 filter
+			if (getMinOptPos(NodeID, NewNodeID, eKdist) >= bestdist) continue;
+			if (PtGrpKey >= 0) {	// valid PtGrpKey  (-1 for invalid key)
+				for (int s = 0; s<Q.k; s++) {
+					DISTMAP& curDistMap = DistMaps[s];
+					if (curDistMap.count(NewNodeID) == 0) {						
+						//Repair_astar(raQ[s], raVisited[s], NewNodeID);
+						A_star(raQ[s], raVisited[s], curDistMap, NewNodeID, PopSize, VisitedSize);
+					}
+				}
+				bool needUpdate = true;
+				if (needUpdate) {
+					float tmppossition;
+					float bestVal = getOptPos(NodeID, NewNodeID, eKdist, tmppossition);
+					if (bestVal >= bestdist) needUpdate = false;
+				}
+				if (needUpdate) {
+					//interkeyw = 
+					UpdatePoints(NodeID, NewNodeID, PtGrpKey, eKdist);
+				}
+			}
+		}
+	}
+	//printf("bestdist: %f\n", bestdist);
+	//printf("totround: %d, pop size: %d, VisitedSize: %d\n", totround, PopSize, VisitedSize);
+
+	/*rs.distance = INFINITE_MAX;
+	rs.poid = -1;
+
+	if (dQ_graph.begin() != dQ_graph.end()) {
+		rs.distance = dQ_graph.begin()->dist;
+		rs.poid = dQ_graph.begin()->id;
+	}*/
+	//printf("The result of TA distance is: %f\n", rs.distance);
+	printf("The result of TA oid is: %d\n", rs.poid);
+	printf("The result of TA edgeexpand is: %d\n", nOfEdgeExpended);
+	printf("The result of TA  nodei is: %d\n", rs.nodei);
+	printf("The result of TA  nodej is: %d\n", rs.nodej);
+	//printf("The result of TA  kwdnode is: %llu\n", rs.kwdnode);
+	//printf("The result of TA  interkew is: %llu\n", rs.inter);
+	//printf("The result of TA  query is: %llu\n", Q.keywords);
+}
 
 
 inline void printSetting() {
@@ -1997,7 +2573,7 @@ void FindSoln(int curAlg) {	// "node" reused as the next nodeID instead !!!
 	StepQueue sQ;
 	StepEvent stepL, stepR;
 	StepQueue *raQ, *saQ;
-	raQ = new StepQueue[Q.k];
+	//raQ = new StepQueue[Q.k];
 	saQ = new StepQueue[Q.k];
 
 	StepQueue *mtQ;
@@ -2042,8 +2618,8 @@ void FindSoln(int curAlg) {	// "node" reused as the next nodeID instead !!!
 		stepL.isSortAcc = true;	stepR.isSortAcc = true;	// ??? 4/3/2004 19:00
 		sQ.push(stepL);			sQ.push(stepR);
 
-		stepL.gdist = vP;			stepL.hdist = 0;
-		stepR.gdist = eDist - vP;	stepR.hdist = 0;
+		stepL.dist = vP;			stepL.hdist = 0;
+		stepR.dist = eDist - vP;	stepR.hdist = 0;
 		stepL.isSortAcc = false;	stepR.isSortAcc = false;	// ??? 4/3/2004 19:00
 		mtQ[s].push(stepL);		mtQ[s].push(stepR);
 	}
@@ -2076,7 +2652,7 @@ void FindSoln(int curAlg) {	// "node" reused as the next nodeID instead !!!
 		astar_Visits = new BitStore[Q.k];
 		for (int i = 0; i<Q.k; i++)
 			astar_Visits[i].assign(NodeNum, false);
-		TA_EW(raQ, sQ);
+		TA_EW(mtQ, sQ);
 	}
 }
 
@@ -2106,6 +2682,7 @@ void queryAlgorithm(string fileprefix) {
 		CloseDiskComm();
 	}
 	else if (algorithmId == TA) {
+		//algorithmId = 2;
 		OpenDiskComm(basepath, 200);
 		initialQuery(fileprefix);
 
@@ -2120,6 +2697,7 @@ void queryAlgorithm(string fileprefix) {
 		CloseDiskComm();
 	}
 	else {
+		//algorithmId = 2;
 		OpenDiskComm(basepath, 200);
 		initialQuery(fileprefix);
 
@@ -2149,30 +2727,60 @@ int main(int argc, char *argv[]) {
 	roadParameter rp;
 	rp.avgNKwd = 7;
 	rp.avgNPt = 7;
-	cout << 1 << endl;
+	//cout << 1 << endl;
 	mainGenData(dataFilename, rp);
 	printf("The end of generate data.\n");
 	//*/
 
 	/*
-	int size; int id;
-	float dis;
-	unsigned long long ull;
-	getFixedF(SIZE_A, Ref(size), 1148);
-	printf("Size is:%d\n", size);
+	algorithmId = 1;
+	
+	OpenDiskComm(basepath, 200);
+	geneQuery(dataFilename);
+	float distl1 = dijkstra(41, 12978, 0);
+	float distr1 = dijkstra(41, 12979, 0);
+	float distl2 = dijkstra(42, 12978, 0);
+	float distr2 = dijkstra(42, 12979, 0);
 
-	//ADJNODE_A, DIST_A, SUMKWD_A, PTKEY_A
-	getVarE(SUMKWD_A, Ref(ull), 1148, 0);
-	unsigned long long ull2 = ull; 
-	//printf("ull is:%I64d\n", ull);
+	float distl3 = dijkstra(209, 12978, 0);
+	float distr3 = dijkstra(209, 12979, 0);
+	float distl4 = dijkstra(210, 12978, 0);
+	float distr4 = dijkstra(210, 12979, 0);
+	printf("%f %f %f %f\n\n\n", distl1, distr1, distl2, distr2);
+	printf("%f %f %f %f\n\n\n", distl3, distr3, distl4, distr4);
+	CloseDiskComm();
 
-	getVarE(ADJNODE_A, Ref(id), 1148, 0);
-	printf("node id is:%d\n", id);
-	*/
+	algorithmId = 3;
+	//geneQuery(dataFilename);
+	/*OpenDiskComm(basepath, 200);
+	float distl1 = dijkstra(41, 12978, 0);
+	float distr1 = dijkstra(41, 12979, 0);
+	float distl2 = dijkstra(42, 12978, 0);
+	float distr2 = dijkstra(42, 12979, 0);
+	printf("TDA 45 is %f; 46 is %f\n", distl2, distr2);
+	CloseDiskComm();*/
+	//int size; int id;
+	//float dis;
+	//unsigned long long ull;
+	//int AdjGrpAddr = getAdjListGrpAddr(459);
+	//int AdjListSize;
+	//getFixedF(SIZE_A, Ref(AdjListSize), AdjGrpAddr);	// read # entries
+	//for (int z = 0; z < AdjListSize; z++) {
+	//	int NewNodeID;
+	//	float eKdist;
+	//	getVarE(ADJNODE_A, Ref(NewNodeID), AdjGrpAddr, z);
+	//	getVarE(DIST_A, Ref(eKdist), AdjGrpAddr, z);
+	//	float dis = eKdist;
+	//}
+	//CloseDiskComm();
+	
+	//*/
 	// perform the query	
 	///*
 	geneQuery(dataFilename);
-	
+	//string name;
+	//name = dataFilename + "\\partAddr";
+	//NodeNum = partAddrLoad(name.c_str(), paID);
 	ifstream iFile(inFile.c_str());
 	while (!iFile.eof())
 	{
@@ -2185,6 +2793,7 @@ int main(int argc, char *argv[]) {
 		char c;
 		iss >> Q.keywords >> Q.k;
 		Q.querypts.clear();
+		
 		queryedge.clear();
 
 		for (int i = 0; i < Q.k; i++) {
@@ -2193,7 +2802,8 @@ int main(int argc, char *argv[]) {
 			__int64 ni, nj;
 			ni = q.Ni;
 			nj = q.Nj;
-
+			q.distEdge = q.distEdge * WFACTOR;
+			q.dist_Ni = q.dist_Ni * WFACTOR;
 			__int64 key = getKey(ni, nj);
 			queryedge.push_back(key);
 			Q.querypts.push_back(q);
@@ -2205,6 +2815,7 @@ int main(int argc, char *argv[]) {
 			queryAlgorithm(dataFilename);
 		}
 		//queryAlgorithm(dataFilename);
+		cout << "************************" << endl << endl;
 	}
 	
 	

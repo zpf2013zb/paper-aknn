@@ -157,7 +157,7 @@ void OpenDiskComm(string fileprefix, int _cachesize)
 	int header_size = sizeof(char) + sizeof(int);
 	gBuffer = new char[BlkLen];
 	i_capacity = (BlkLen - header_size) / (sizeof(int) + sizeof(int));
-	printf("Blocklength=%d, i_cap=%d\n", BlkLen, i_capacity);
+	//printf("Blocklength=%d, i_cap=%d\n", BlkLen, i_capacity);
 
 	InitFreqCache(FC_A);
 	InitFreqCache(FC_P);
@@ -207,7 +207,7 @@ void OpenDiskComm(string fileprefix, int _cachesize)
 	fread(Ref(NodeNum), 1, sizeof(int), AdjFile);	//	NodeNum=AdjTree->UserField;
 	AdjFileSize = getFileSize(AdjFile);
 
-	printf("PtFileSize: %d, AdjFileSize: %d, NodeNum: %d, PtNum: %d\n", PtFileSize, AdjFileSize, NodeNum, PtNum);
+	//printf("PtFileSize: %d, AdjFileSize: %d, NodeNum: %d, PtNum: %d\n", PtFileSize, AdjFileSize, NodeNum, PtNum);
 }
 
 void CloseDiskComm()

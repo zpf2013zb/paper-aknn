@@ -8,7 +8,7 @@
 #define MAX_KEYWORDSN 64
 #define MAXLEVEL 10
 #define MAXKWD 64
-
+#define WEIGHT_FACTOR 100000
 // to be initialized
 char **cur_block;
 int *cur_block_offset, *cur_node_maxkey, *cur_node_entries;
@@ -536,7 +536,10 @@ void ReadRealNetwork(std::string prefix_name, int _NodeNum)
 			}
 			vist.push_back(key);
 			edge* e = new edge;
-			e->dist = dist;
+			//e->dist = dist;
+			int distint;
+			distint = (int)(dist * WEIGHT_FACTOR);
+			e->dist = distint;
 			e->Ni = Ni<Nj ? Ni : Nj;
 			e->Nj = Ni<Nj ? Nj : Ni;	// enforce the constriant Ni<Nj
 			AdjList[Ni].push_back(Nj);

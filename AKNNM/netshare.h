@@ -9,7 +9,7 @@
 
 using namespace std;
 // handle
-#define MAX_DIST 9999999
+#define MAX_DIST 9999999999
 #define MAX_KEYWORDS 64
 
 extern int NodeNum;
@@ -141,8 +141,6 @@ inline void breakKey(__int64 key,int& Ni,int& Nj)
     Nj=key%NodeNum;
 }
 
-
-
 //-------
 // Step
 //-------
@@ -166,7 +164,7 @@ struct StepComparison
 
 typedef	priority_queue<StepEvent, vector<StepEvent>, StepComparison> StepQueue;
 
-void printStepEvent(StepEvent& event);
+//void printStepEvent(StepEvent& event);
 
 /*
 void printEdgeKeys()

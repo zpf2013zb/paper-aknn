@@ -71,7 +71,7 @@ unordered_map<int, int> graph_partition(set<int> &nset); // graph partition
 void build(EdgeMapType EdgeMap); // egtree construction
 void egtree_save(string filename); // dump gtree index to file
 void egtree_load(const char* filename, vector<TreeNode>& EGTree);// load gtree index from file
-vector<int> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph); // dijkstra search, used for single-source shortest path search WITHIN one gtree leaf node!
+vector<float> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph); // dijkstra search, used for single-source shortest path search WITHIN one gtree leaf node!
 void hierarchy_shortest_path_calculation(); // calculate the distance matrix
 int mainEgtree(int nOfNode, EdgeMapType EdgeMap); // main function
 bool sortBySize(const unsigned long long& left, const unsigned long long& right); //sort by InterNode kwd size

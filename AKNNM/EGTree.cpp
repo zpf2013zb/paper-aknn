@@ -11,7 +11,7 @@
 #define ADJWEIGHT_SET_TO_ALL_ONE true
 // we assume edge weight is integer, thus (input edge) * WEIGHT_INFLATE_FACTOR = (our edge weight)
 //#define WEIGHT_INFLATE_FACTOR 100000
-#define WEIGHT_INFLATE_FACTOR 100000
+#define WEIGHT_INFLATE_FACTOR 1
 // egtree fanout
 #define PARTITION_PART 4
 // egtree leaf node capacity = tau(in paper)
@@ -90,7 +90,7 @@ void init_input(int nOfNode, EdgeMapType EdgeMap) {
 	printf("PROCESSING EDGE...");
 	int eid;
 	int snid, enid;
-	double weight;
+	float weight;
 	int iweight;
 	noe = 0;
 	EdgeMapType::iterator iter = EdgeMap.begin();
@@ -501,25 +501,27 @@ void egtree_load(const char* filename, vector<TreeNode>& EGTree) {
 // input: s = source node
 //        cands = candidate node list
 //        graph = search graph(this can be set to subgraph)
-vector<int> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph) {
+vector<float> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph) {
 	// init
 	set<int> todo;
 	todo.clear();
 	todo.insert(cands.begin(), cands.end());
 
-	unordered_map<int, int> result;
+	unordered_map<int, float> result;
 	result.clear();
 	set<int> visited;
 	visited.clear();
-	unordered_map<int, int> q;
+	unordered_map<int, float> q;
 	q.clear();
 	q[s] = 0;
 
 	// start
-	int min, minpos, adjnode, weight;
+	int minpos, adjnode;
+	float min;
+	float weight;
 	while (!todo.empty() && !q.empty()) {
 		min = -1;
-		for (unordered_map<int, int>::iterator it = q.begin(); it != q.end(); it++) {
+		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
 			if (min == -1) {
 				minpos = it->first;
 				min = it->second;
@@ -547,7 +549,7 @@ vector<int> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph) {
 			if (visited.find(adjnode) != visited.end()) {
 				continue;
 			}
-			weight = graph[minpos].adjweight[i];
+			weight = graph[minpos].adjweight[i]*1.0;
 
 			if (q.find(adjnode) != q.end()) {
 				if (min + weight < q[adjnode]) {
@@ -562,7 +564,7 @@ vector<int> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph) {
 	}
 
 	// output
-	vector<int> output;
+	vector<float> output;
 	for (int i = 0; i < cands.size(); i++) {
 		output.push_back(result[cands[i]]);
 	}
@@ -689,8 +691,8 @@ void hierarchy_shortest_path_calculation() {
 	vector<Node> graph;
 	graph = Nodes;
 	vector<int> cands;
-	vector<int> result;
-	unordered_map<int, unordered_map<int, int> > vertex_pairs;
+	vector<float> result;
+	unordered_map<int, unordered_map<int, float> > vertex_pairs;
 
 	// do dijkstra
 	int s, t, tn, nid, cid, weight;
@@ -717,7 +719,11 @@ void hierarchy_shortest_path_calculation() {
 				EGTree[tn].union_borders = EGTree[tn].borders;
 
 				//--------------record the mind information
-				
+				int sizel = cands.size();
+				int sizeb = EGTree[tn].union_borders.size();
+				int size = sizel*sizeb;
+				vector<float> vd(size, 0);
+				EGTree[tn].mind = vd;
 				for (int k = 0; k < EGTree[tn].union_borders.size(); k++) {
 					//printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, EGTree[tn].union_borders[k] );
 					result = dijkstra_candidate(EGTree[tn].union_borders[k], cands, graph);
@@ -725,7 +731,10 @@ void hierarchy_shortest_path_calculation() {
 
 					// save to map
 					for (int p = 0; p < result.size(); p++) {
-						EGTree[tn].mind.push_back(result[p]);
+						//EGTree[tn].mind.push_back(result[p]);
+						int pos = k*sizel + p;
+						//EGTree[tn].mind.push_back(result[p]);
+						EGTree[tn].mind[pos] = result[p];
 						vertex_pairs[EGTree[tn].union_borders[k]][cands[p]] = result[p];
 					}
 				}
@@ -808,7 +817,10 @@ void hierarchy_shortest_path_calculation() {
 				//------------------------record the mind information			
 				// for each border, do min dis
 				//int cc = 0;
-
+				int csize = cands.size();
+				int size = ((csize + 1)*csize) / 2;
+				vector<float> vd(size, 0);
+				EGTree[tn].mind = vd;
 				for (int k = 0; k < EGTree[tn].union_borders.size(); k++) {
 					//printf("DIJKSTRA...LEAF=%d BORDER=%d\n", tn, EGTree[tn].union_borders[k] );
 					result = dijkstra_candidate(EGTree[tn].union_borders[k], cands, graph);
@@ -816,9 +828,20 @@ void hierarchy_shortest_path_calculation() {
 
 					// save to map
 					for (int p = 0; p < result.size(); p++) {
+						int pos = 0;
 						if (k <= p) {
+							pos = (p*(p + 1)) / 2 + k;
+						}
+						else {
+							pos = (k*(k + 1)) / 2 + p;
+						}
+						/*if (k <= p) {
 							EGTree[tn].mind.push_back(result[p]);
-						}						
+						}*/			
+						if (EGTree[tn].mind[pos]>0 && EGTree[tn].mind[pos] != result[p]) {
+							printf("The distance compute Error!\n");
+						}
+						EGTree[tn].mind[pos] = result[p];
 						vertex_pairs[EGTree[tn].union_borders[k]][cands[p]] = result[p];
 						//vertex_pairs[EGTree[tn].union_borders[p]][cands[k]] = result[p];
 					}
