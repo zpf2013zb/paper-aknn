@@ -19,12 +19,13 @@ using namespace std;
 #define TA 3
 #define CE 4
 
-#define INFINITE_MAX 100000000.0
+#define INFINITE_MAX 9999999999.0
 #define MAX_KEYWORDN 64 
 
 #define WFACTOR 1000000
 // define the query path
-string basepath = "..\\dataset";
+//string basepath = "..\\aknndata\\tg";
+string basepath;
 
 int nOfPageAccessed;
 int nOfEdgeExpended;
@@ -347,6 +348,7 @@ void initialQuery(string fileprefix) {
 	comQueryPath(Q, EGT);
 }
 
+
 //º∆À„qµΩvertexµƒæ‡¿Î
 vector<float> dijkstra_candidate(QueryPoint s, vector<int> &cands) {
 	// init
@@ -369,12 +371,13 @@ vector<float> dijkstra_candidate(QueryPoint s, vector<int> &cands) {
 	q[vj] = s.distEdge - s.dist_Ni;
 
 	// start
-	int min, minpos, adjnode;
+	int minpos, adjnode;
+	float min;
 	float weight;
 	while (!todo.empty() && !q.empty()) {
-		min = -1;
+		min = INFINITE_MAX;
 		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
-			if (min == -1) {
+			/*if (min == -1) {
 				minpos = it->first;
 				min = it->second;
 			}
@@ -383,6 +386,10 @@ vector<float> dijkstra_candidate(QueryPoint s, vector<int> &cands) {
 					min = it->second;
 					minpos = it->first;
 				}
+			}*/
+			if (it->second < min) {
+				min = it->second;
+				minpos = it->first;
 			}
 		}
 
@@ -451,12 +458,13 @@ float dijkstra(int nodei, int nodej, float upperbound) {
 	//q[vj] = edgedist;
 
 	// start
-	int min, minpos, adjnode;
+	int minpos, adjnode;
+	float min;
 	float weight;
 	while (!todo.empty() && !q.empty()) {
-		min = -1;
+		min = INFINITE_MAX;
 		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
-			if (min == -1) {
+			/*if (min == -1) {
 				minpos = it->first;
 				min = it->second;
 			}
@@ -465,6 +473,10 @@ float dijkstra(int nodei, int nodej, float upperbound) {
 					min = it->second;
 					minpos = it->first;
 				}
+			}*/
+			if (it->second < min) {
+				min = it->second;
+				minpos = it->first;
 			}
 		}
 		if (min > upperbound) break;
@@ -2713,9 +2725,20 @@ void queryAlgorithm(string fileprefix) {
 	}
 }
 
+//basepath = "..\\aknndata\\nanp1";
 //************* end of TKDE2005
 int main(int argc, char *argv[]) {
-
+	basepath = "..\\aknndata\\nacov";
+	for (int loop = 1; loop < 6; loop++) {
+		string dataFilename = basepath;
+		roadParameter rp;
+		rp.avgNKwd = 10;
+		rp.avgNPt = 8;
+		//cout << 1 << endl;
+		mainGenData(dataFilename, rp);
+		printf("The end of generate data.\n");
+	}
+	///basepath = "..\\aknndata\\nacov";
 	string dataFilename = basepath;
 	
 	// set the query:read info from query file, 
@@ -2723,10 +2746,10 @@ int main(int argc, char *argv[]) {
 	string inFile = dataFilename + "\\queryfile";
 
 	// generate index
-	/*
+	///*
 	roadParameter rp;
-	rp.avgNKwd = 7;
-	rp.avgNPt = 7;
+	rp.avgNKwd = 10;
+	rp.avgNPt = 8;
 	//cout << 1 << endl;
 	mainGenData(dataFilename, rp);
 	printf("The end of generate data.\n");
@@ -2776,7 +2799,7 @@ int main(int argc, char *argv[]) {
 	
 	//*/
 	// perform the query	
-	///*
+	/*
 	geneQuery(dataFilename);
 	//string name;
 	//name = dataFilename + "\\partAddr";

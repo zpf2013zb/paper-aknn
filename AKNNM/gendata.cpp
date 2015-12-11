@@ -501,7 +501,7 @@ void ReadRealNetwork(std::string prefix_name, int _NodeNum)
 	float dist, x, y;
 	//unsigned int Ni, Nj;
 	string roadf;
-	roadf = prefix_name + "\\road";	
+	roadf = prefix_name + "\\edge";	
 
 	FILE* roadp = fopen(roadf.c_str(), "r");
 	CheckFile(roadp, roadf.c_str());
@@ -749,7 +749,7 @@ int mainGenData(string prxfilename, roadParameter rp)
 	InitClock();	// side effect: init. seeds for random generators
 	//string road = prxfilename + "\\road";
 	ReadRealNetwork(prxfilename, 0);
-	//ConnectedGraphCheck();
+	ConnectedGraphCheck();
 
 	
 	GenOutliers(EdgeNum*rp.avgNPt, rp.avgNKwd);

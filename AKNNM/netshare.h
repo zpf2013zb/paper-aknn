@@ -9,7 +9,7 @@
 
 using namespace std;
 // handle
-#define MAX_DIST 9999999999
+#define MAX_DIST 9999999999.0
 #define MAX_KEYWORDS 64
 
 extern int NodeNum;

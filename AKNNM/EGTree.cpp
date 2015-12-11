@@ -19,7 +19,7 @@
 #define ATTRIBUTE_DIMENSION 6
 #define SKY_PARTITION 5
 #define edDis 0.5
-#define covThre 50
+#define covThre 100
 #define splitBlock 5
 
 /********************************DataStructure************************************/
@@ -81,6 +81,9 @@ void init_input(int nOfNode, EdgeMapType EdgeMap) {
 	// note that vertex id starts from 0
 	for (int i = 0; i<nOfNode; i++) {
 		Node node;
+		node.adjnodes.clear();
+		node.adjweight.clear();
+		node.egtreepath.clear();
 		node.isborder = false;
 		Nodes.push_back(node);
 	}
@@ -520,9 +523,10 @@ vector<float> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph)
 	float min;
 	float weight;
 	while (!todo.empty() && !q.empty()) {
-		min = -1;
+		min = MAX_DIST;
+		weight = 0;
 		for (unordered_map<int, float>::iterator it = q.begin(); it != q.end(); it++) {
-			if (min == -1) {
+			/*if (min == -1) {
 				minpos = it->first;
 				min = it->second;
 			}
@@ -531,6 +535,10 @@ vector<float> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph)
 					min = it->second;
 					minpos = it->first;
 				}
+			}*/
+			if (it->second < min) {
+				min = it->second;
+				minpos = it->first;
 			}
 		}
 
@@ -549,10 +557,10 @@ vector<float> dijkstra_candidate(int s, vector<int> &cands, vector<Node> &graph)
 			if (visited.find(adjnode) != visited.end()) {
 				continue;
 			}
-			weight = graph[minpos].adjweight[i]*1.0;
+			weight = graph[minpos].adjweight[i];
 
 			if (q.find(adjnode) != q.end()) {
-				if (min + weight < q[adjnode]) {
+				if ((min + weight) < q[adjnode]) {
 					q[adjnode] = min + weight;
 				}
 			}
@@ -838,8 +846,13 @@ void hierarchy_shortest_path_calculation() {
 						/*if (k <= p) {
 							EGTree[tn].mind.push_back(result[p]);
 						}*/			
+						float minds = EGTree[tn].mind[pos];
+						float res = result[p];
 						if (EGTree[tn].mind[pos]>0 && EGTree[tn].mind[pos] != result[p]) {
-							printf("The distance compute Error!\n");
+							if (result[p] < EGTree[tn].mind[pos]) {
+								EGTree[tn].mind[pos] = result[p];
+							}
+ 							//printf("The distance compute Error!\n");
 						}
 						EGTree[tn].mind[pos] = result[p];
 						vertex_pairs[EGTree[tn].union_borders[k]][cands[p]] = result[p];
